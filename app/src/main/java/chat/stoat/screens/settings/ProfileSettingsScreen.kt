@@ -83,14 +83,19 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 pendingPronouns = user.pronouns.orEmpty()
             }
             viewModelScope.launch {
-                currentProfile = fetchUserProfile(self)
-                currentProfile!!.background?.id?.let {
-                    backgroundModel = "$STOAT_FILES/backgrounds/${it}"
+                try {
+                    val profile = fetchUserProfile(self)
+                    currentProfile = profile
+                    profile.background?.id?.let {
+                        backgroundModel = "$STOAT_FILES/backgrounds/${it}"
+                    }
+                    pendingProfile = profile.copy()
+                } catch (e: Exception) {
+                    currentProfile = Profile()
+                    pendingProfile = Profile()
+                } finally {
+                    isLoading = false
                 }
-
-                pendingProfile = currentProfile!!.copy()
-
-                isLoading = false
             }
         }
 

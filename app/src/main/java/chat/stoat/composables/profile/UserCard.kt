@@ -106,22 +106,19 @@ fun UserCard(
                     mapOf(EncodeHintType.MARGIN to "1")
                 )
 
-                val bitmap =
-                    Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888)
-
-                for (x in 0 until matrix.width) {
-                    for (y in 0 until matrix.height) {
-                        bitmap.setPixel(
-                            x,
-                            y,
-                            if (matrix.get(
-                                    x,
-                                    y
-                                )
-                            ) Color.White.toArgb() else Color.Transparent.toArgb()
-                        )
+                val width = matrix.width
+                val height = matrix.height
+                val pixels = IntArray(width * height)
+                val white = Color.White.toArgb()
+                val transparent = Color.Transparent.toArgb()
+                for (y in 0 until height) {
+                    val rowOffset = y * width
+                    for (x in 0 until width) {
+                        pixels[rowOffset + x] = if (matrix.get(x, y)) white else transparent
                     }
                 }
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
 
                 Log.d("UserCard", "Generated QR code for user ${user.id}")
 
