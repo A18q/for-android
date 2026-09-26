@@ -19,6 +19,9 @@ internal enum class VoiceSound(@param:RawRes val resourceId: Int) {
     USER_LEAVE(R.raw.sfx_user_leave_voice),
     STREAM_START(R.raw.sfx_stream_start),
     STREAM_END(R.raw.sfx_stream_end),
+    MESSAGE_PING(R.raw.sfx_message_ping),
+    MENTION(R.raw.sfx_mention),
+    CALL_RINGING(R.raw.sfx_call_ringing),
 }
 
 internal class VoiceSoundPlayer(context: Context) {
