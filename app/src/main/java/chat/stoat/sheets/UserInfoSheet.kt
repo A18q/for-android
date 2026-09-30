@@ -238,6 +238,7 @@ fun UserInfoSheet(
             } ?: ""
             val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
             val subtitle = if (pronouns != null && handle.isNotEmpty()) "$handle • $pronouns" else handle.ifEmpty { pronouns ?: "" }
+
             if (subtitle.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -303,7 +304,11 @@ fun UserInfoSheet(
                     )
                 }
             } else {
-                UserButtons(user, dismissSheet)
+                UserButtons(
+                    user = user,
+                    serverId = serverId,
+                    dismissSheet = dismissSheet,
+                )
             }
         }
 

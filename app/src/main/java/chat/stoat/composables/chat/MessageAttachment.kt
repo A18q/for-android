@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import chat.stoat.R
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.media.AudioPlayer
+import chat.stoat.composables.media.VoiceMessagePlayer
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
 import dev.chrisbanes.haze.hazeEffect
@@ -138,7 +140,7 @@ fun VideoPlayButton() {
     )
 
     Icon(
-        painter = painterResource(R.drawable.ic_play_arrow_24dp),
+        painter = painterResource(R.drawable.ic_play_arrow_24dp__fill),
         contentDescription = stringResource(id = R.string.media_viewer_play),
         modifier = Modifier
             .width(32.dp)
@@ -178,12 +180,28 @@ fun VideoAttachment(attachment: AutumnResource) {
 }
 
 @Composable
-fun AudioAttachment(attachment: AutumnResource) {
+fun AudioAttachment(
+    attachment: AutumnResource,
+) {
     val url = "$STOAT_FILES/attachments/${attachment.id}/${attachment.filename}"
     AudioPlayer(
         url = url,
         filename = attachment.filename ?: "Audio",
-        contentType = attachment.metadata?.type ?: "audio/mpeg"
+        contentType = attachment.contentType ?: "audio/mpeg",
+    )
+}
+
+@Composable
+fun VoiceMessageAttachment(
+    attachment: AutumnResource,
+    waveform: List<Int>,
+    durationMillis: Long,
+) {
+    val url = "$STOAT_FILES/attachments/${attachment.id}/${attachment.filename}"
+    VoiceMessagePlayer(
+        url = url,
+        waveform = waveform,
+        durationMillis = durationMillis,
     )
 }
 
@@ -194,12 +212,26 @@ fun TextAttachment(attachment: AutumnResource) {
 }
 
 @Composable
-fun MessageAttachment(attachment: AutumnResource, onAttachmentClick: (AutumnResource) -> Unit) {
+fun MessageAttachment(
+    attachment: AutumnResource,
+    waveform: List<Int>? = null,
+    waveformDurationMillis: Long? = null,
+    onAttachmentClick: (AutumnResource) -> Unit,
+) {
     Box(
         modifier = Modifier
-            .clip(MaterialTheme.shapes.medium)
+            .clip(if (waveform != null) CircleShape else MaterialTheme.shapes.medium)
             .clickable { onAttachmentClick(attachment) }
     ) {
+        if (waveform != null) {
+            VoiceMessageAttachment(
+                attachment = attachment,
+                waveform = waveform,
+                durationMillis = requireNotNull(waveformDurationMillis),
+            )
+            return
+        }
+
         if (attachment.metadata?.type == null) {
             FileAttachment(attachment)
             return

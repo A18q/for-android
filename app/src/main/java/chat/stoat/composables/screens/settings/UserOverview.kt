@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +44,7 @@ import chat.stoat.api.internals.SpecialUsers
 import chat.stoat.api.internals.ULID
 import chat.stoat.api.internals.solidColor
 import chat.stoat.api.routes.user.fetchUserProfile
+import chat.stoat.composables.expressive.Wave
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.presenceFromStatus
@@ -50,7 +53,7 @@ import chat.stoat.core.model.schemas.AutumnResource
 import chat.stoat.core.model.schemas.Profile
 import chat.stoat.core.model.schemas.User
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SelfUserOverview() {
@@ -60,10 +63,14 @@ fun SelfUserOverview() {
 }
 
 @Composable
-fun UserOverview(user: User, internalPadding: Boolean = true) {
+fun UserOverview(
+    user: User,
+    internalPadding: Boolean = true,
+    pfpUrl: String? = null,
+) {
     var profile by remember { mutableStateOf<Profile?>(null) }
 
-    LaunchedEffect(user) {
+    LaunchedEffect(user.id) {
         try {
             if (profile == null) {
                 profile = fetchUserProfile(user.id ?: ULID.makeSpecial(0))
@@ -73,7 +80,12 @@ fun UserOverview(user: User, internalPadding: Boolean = true) {
         }
     }
 
-    RawUserOverview(user, profile, internalPadding = internalPadding)
+    RawUserOverview(
+        user = user,
+        profile = profile,
+        pfpUrl = pfpUrl,
+        internalPadding = internalPadding,
+    )
 }
 
 @Composable
@@ -87,8 +99,8 @@ fun RawUserOverview(
     val context = LocalContext.current
     var teamMemberFlair by remember { mutableStateOf<Brush?>(null) }
 
-    LaunchedEffect(user) {
-        runBlocking(Dispatchers.IO) {
+    LaunchedEffect(user.id) {
+        withContext(Dispatchers.IO) {
             user.id?.let {
                 teamMemberFlair = SpecialUsers.teamFlairAsBrush(
                     context,
@@ -208,6 +220,149 @@ fun RawUserOverview(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+    }
+}
+
+enum class WaveInclusionPolicy {
+    Include,
+    Exclude,
+    OnlyTeam
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun RawUserOverview2(
+    user: User,
+    profile: Profile? = null,
+    pfpUrl: String? = null,
+    backgroundUrl: String? = null,
+    showWave: WaveInclusionPolicy = WaveInclusionPolicy.Include,
+) {
+    val context = LocalContext.current
+    var teamMemberFlair by remember { mutableStateOf<Brush?>(null) }
+
+    LaunchedEffect(user.id) {
+        withContext(Dispatchers.IO) {
+            user.id?.let {
+                teamMemberFlair = SpecialUsers.teamFlairAsBrush(
+                    context,
+                    it
+                )
+            }
+        }
+    }
+
+    Column {
+        val background = backgroundUrl ?: profile?.background
+        val contentColour = LocalContentColor.current
+        val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
+
+        if (background != null) {
+            RemoteImage(
+                url = backgroundUrl
+                    ?: "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}",
+                description = null,
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.large)
+                    .height(128.dp)
+                    .fillMaxWidth(),
+                contentScale = ContentScale.FillWidth
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+        ) {
+            UserAvatar(
+                username = user.displayName ?: stringResource(id = R.string.unknown),
+                rawUrl = pfpUrl,
+                userId = user.id ?: ULID.makeSpecial(0),
+                avatar = user.avatar,
+                size = 64.dp,
+                presence = presenceFromStatus(user.status?.presence, user.online ?: false),
+                presenceSize = 24.dp
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            val noDisplayName =
+                user.displayName.isNullOrBlank() || user.displayName!!.trim() == user.username?.trim()
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                if (noDisplayName) {
+                    Text(
+                        text = "${user.username}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 32.sp,
+                        color = contentColour,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "@${user.username}#${user.discriminator}",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        color = contentColour,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Text(
+                        text = user.displayName ?: "",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 32.sp,
+                        color = contentColour,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "@${user.username}#${user.discriminator}",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        color = contentColour,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            pronouns?.let {
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = it,
+                    color = contentColour,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.Bottom)
+                        .widthIn(max = 140.dp)
+                )
+            }
+        }
+
+        val discriminator = user.discriminator?.toIntOrNull()?.coerceIn(0, 9999) ?: 5000
+        val wavelengthVariance = 12.5f
+        val wavelengthOffset = discriminator / 9999f * (2 * wavelengthVariance) - wavelengthVariance
+
+        if (showWave != WaveInclusionPolicy.Exclude && (showWave != WaveInclusionPolicy.OnlyTeam || teamMemberFlair != null)) {
+            Wave(
+                colour = teamMemberFlair
+                    ?: Brush.solidColor(MaterialTheme.colorScheme.surfaceContainerHighest),
+                stroke = WavyProgressIndicatorDefaults.linearIndicatorStroke,
+                amplitude = 1f,
+                wavelength = 40.dp + wavelengthOffset.dp,
+                modifier = Modifier
+                    .padding(vertical = 8.dp, horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .height(12.dp)
+            )
         }
     }
 }

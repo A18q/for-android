@@ -14,6 +14,15 @@ import chat.stoat.screens.settings.NotificationsSettingsScreenViewModel
 import chat.stoat.screens.settings.ProfileSettingsScreenViewModel
 import chat.stoat.screens.settings.SettingsScreenViewModel
 import chat.stoat.screens.settings.channel.ChannelSettingsOverviewViewModel
+import chat.stoat.screens.settings.channel.ChannelSettingsPermissionsViewModel
+import chat.stoat.screens.settings.server.ServerIdentitySettingsViewModel
+import chat.stoat.screens.settings.server.ServerSettingsBansViewModel
+import chat.stoat.screens.settings.server.ServerSettingsChannelsViewModel
+import chat.stoat.screens.settings.server.ServerSettingsEmojisViewModel
+import chat.stoat.screens.settings.server.ServerSettingsInvitesViewModel
+import chat.stoat.screens.settings.server.ServerSettingsOverviewViewModel
+import chat.stoat.screens.settings.server.ServerSettingsRoleEditorViewModel
+import chat.stoat.screens.settings.server.ServerSettingsRolesViewModel
 import chat.stoat.sheets.MemberListSheetViewModel
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
@@ -34,6 +43,15 @@ val viewModelModule = module {
     viewModel { ProfileSettingsScreenViewModel(androidApplication()) }
     viewModel { AppearanceSettingsScreenViewModel(androidApplication()) }
     viewModel { ChannelSettingsOverviewViewModel(androidApplication()) }
+    viewModel { ChannelSettingsPermissionsViewModel(androidApplication()) }
+    viewModel { ServerSettingsOverviewViewModel(androidApplication()) }
+    viewModel { ServerIdentitySettingsViewModel(androidApplication()) }
+    viewModel { ServerSettingsBansViewModel(androidApplication()) }
+    viewModel { ServerSettingsChannelsViewModel(androidApplication()) }
+    viewModel { ServerSettingsEmojisViewModel(androidApplication()) }
+    viewModel { ServerSettingsInvitesViewModel(androidApplication()) }
+    viewModel { ServerSettingsRolesViewModel(androidApplication()) }
+    viewModel { ServerSettingsRoleEditorViewModel(androidApplication()) }
     viewModel { AccountSettingsScreenViewModel(androidApplication()) }
     viewModel { MfaSettingsScreenViewModel(androidApplication()) }
 }

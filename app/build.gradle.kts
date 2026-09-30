@@ -63,8 +63,8 @@ android {
         applicationId = "chat.revolt"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = Integer.parseInt("001_007_002".replace("_", ""), 10)
-        versionName = "1.7.2"
+        versionCode = Integer.parseInt("001_008_001".replace("_", ""), 10)
+        versionName = "1.8.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -182,7 +182,9 @@ dependencies {
     implementation(libs.compose.material3.windowsizeclass)
     implementation(libs.compose.material.icons.core)
     implementation(libs.compose.runtime.livedata)
+    implementation(libs.reorderable)
     implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.lifecycle.process)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.activity.compose)
 
@@ -227,8 +229,10 @@ dependencies {
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.muxer)
     implementation(libs.media3.okhttp)
     implementation(libs.media3.ui)
+    implementation(libs.media3.ui.compose.material3)
 
     implementation(libs.zoomable.image)
     implementation(libs.zoomable.image.glide)

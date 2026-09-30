@@ -9,6 +9,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +40,8 @@ class ExperimentsSettingsScreenViewModel : ViewModel() {
             usePolarChecked.value = Experiments.usePolar.isEnabled
             enableServerIdentityOptionsChecked.value =
                 Experiments.enableServerIdentityOptions.isEnabled
+            showUserSheet2Checked.value = Experiments.showUserSheet2.isEnabled
+            voiceMessagesChecked.value = Experiments.voiceMessages.isEnabled
         }
     }
 
@@ -87,6 +90,25 @@ class ExperimentsSettingsScreenViewModel : ViewModel() {
         }
     }
 
+    val showUserSheet2Checked = mutableStateOf(false)
+
+    fun setShowUserSheet2Checked(value: Boolean) {
+        viewModelScope.launch {
+            kv.set("exp/showUserSheet2", value)
+            Experiments.showUserSheet2.setEnabled(value)
+            showUserSheet2Checked.value = value
+        }
+    }
+
+    val voiceMessagesChecked = mutableStateOf(false)
+
+    fun setVoiceMessagesChecked(value: Boolean) {
+        viewModelScope.launch {
+            kv.set("exp/voiceMessages", value)
+            Experiments.voiceMessages.setEnabled(value)
+            voiceMessagesChecked.value = value
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -170,6 +192,47 @@ fun ExperimentsSettingsScreen(
             },
             modifier = Modifier.clickable { viewModel.setEnableServerIdentityOptionsChecked(!viewModel.enableServerIdentityOptionsChecked.value) }
         )
+
+        ListItem(
+            headlineContent = {
+                Text("UserInfoSheet2")
+            },
+            supportingContent = {
+                Text("New user sheet")
+            },
+            trailingContent = {
+                Switch(
+                    checked = viewModel.showUserSheet2Checked.value,
+                    onCheckedChange = null
+                )
+            },
+            modifier = Modifier.clickable { viewModel.setShowUserSheet2Checked(!viewModel.showUserSheet2Checked.value) }
+        )
+
+        if (Experiments.voiceMessages.isAvailable) {
+            ListItem(
+                headlineContent = {
+                    Text(
+                        text = "Voice Messages",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        text = "Internal"
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = viewModel.voiceMessagesChecked.value,
+                        onCheckedChange = null
+                    )
+                },
+                modifier = Modifier.clickable {
+                    viewModel.setVoiceMessagesChecked(!viewModel.voiceMessagesChecked.value)
+                }
+            )
+        }
 
         Subcategory(
             title = {

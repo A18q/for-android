@@ -6,7 +6,22 @@ import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class OrderingSettings(
-    val servers: List<String> = emptyList()
+    val servers: List<String> = emptyList(),
+    val serverSidebar: List<String>? = null,
+)
+
+@Serializable
+data class ServerFolder(
+    val id: String,
+    val name: String = "",
+    val colour: String? = null,
+    val collapsed: Boolean? = null,
+    val servers: List<String> = emptyList(),
+)
+
+@Serializable
+data class ServerFoldersSettings(
+    val folders: List<ServerFolder> = emptyList()
 )
 
 
@@ -69,6 +84,11 @@ data class AndroidSpecificSettings(
      * Must be integer in range 0..50 inclusive.
      */
     var avatarRadius: Int? = null,
+    /**
+     * Whether to use blur effects behind the chat message composer.
+     * Boolean.
+     */
+    var messageComposerBlurEnabled: Boolean? = null,
     /**
      * Controls preferences for special embeds.
      * Object; See [AndroidSpecificSettingsSpecialEmbedSettings] for format.

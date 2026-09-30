@@ -1,12 +1,12 @@
 [versions]
-compileSdk = "36"
+compileSdk = "37"
 minSdk = "26"
-targetSdk = "36"
+targetSdk = "37"
 
 kotlin = "2.3.10"
 kotlin-serialization = "1.10.0"
-ksp = "2.3.5"
-agp = "9.1.0"
+ksp = "2.3.6"
+agp = "9.3.2"
 google-services = "4.4.4"
 sentry = "8.13.2" # This is separate from the gradle plugin version which is defined ad hoc below
 sqldelight = "2.3.2"
@@ -17,7 +17,7 @@ accompanist = "0.37.3"
 ktor = "3.4.1"
 glide = "5.0.5"
 aboutlibraries = "15.0.0-a02"
-media3 = "1.9.2"
+media3 = "1.11.0"
 telephoto = "1.0.0-alpha02"
 haze = "1.7.2"
 chucker = "4.3.1"
@@ -64,6 +64,7 @@ compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 activity-compose = { module = "androidx.activity:activity-compose", version = "1.10.1" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist" }
@@ -83,8 +84,10 @@ hcaptcha = { module = "com.github.hcaptcha:hcaptcha-android-sdk", version = "3.8
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version = "2.1.5" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
+media3-muxer = { module = "androidx.media3:media3-muxer", version.ref = "media3" }
 media3-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
 media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+media3-ui-compose-material3 = { module = "androidx.media3:media3-ui-compose-material3", version.ref = "media3" }
 zoomable-image = { module = "me.saket.telephoto:zoomable-image", version.ref = "telephoto" }
 zoomable-image-glide = { module = "me.saket.telephoto:zoomable-image-glide", version.ref = "telephoto" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
@@ -113,6 +116,7 @@ multiplatform-markdown-code = { module = "com.mikepenz:multiplatform-markdown-re
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 ratex-android = { module = "io.github.erweixin:ratex-android", version = "0.1.11" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version = "3.1.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

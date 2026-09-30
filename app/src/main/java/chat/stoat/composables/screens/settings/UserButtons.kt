@@ -17,6 +17,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -49,7 +51,12 @@ import chat.stoat.api.routes.user.unfriendUser
 import chat.stoat.callbacks.Action
 import chat.stoat.callbacks.ActionChannel
 import chat.stoat.core.model.schemas.User
+import chat.stoat.dialogs.MemberModerationAction
+import chat.stoat.dialogs.MemberModerationDialog
+import chat.stoat.dialogs.memberModerationPermissions
 import chat.stoat.internals.Platform
+import chat.stoat.internals.extensions.rememberServerPermissions
+import chat.stoat.internals.server.serverIdentityCapabilities
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import logcat.asLog
@@ -58,14 +65,47 @@ import logcat.logcat
 @Composable
 fun UserButtons(
     user: User,
+    serverId: String? = null,
     dismissSheet: suspend () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val clipboard = LocalClipboardManager.current
 
     var botEasterEgg by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var moderationAction by remember { mutableStateOf<MemberModerationAction?>(null) }
+
+    val serverPermissions by rememberServerPermissions(serverId.orEmpty())
+    val moderationPermissions = serverId?.let {
+        memberModerationPermissions(it, user.id)
+    }
+    val identityCapabilities = user.id?.let { userId ->
+        serverId?.let {
+            serverIdentityCapabilities(
+                targetUserId = userId,
+                selfUserId = StoatAPI.selfId,
+                permissions = serverPermissions,
+            )
+        }
+    }
+    val targetMember = user.id?.let { userId ->
+        serverId?.let { StoatAPI.members.getMember(it, userId) }
+    }
+    val canEditServerIdentity = user.id != StoatAPI.selfId && targetMember != null &&
+            (identityCapabilities?.canChangeNickname == true ||
+                    identityCapabilities?.canRemoveAvatar == true && targetMember.avatar != null)
+
+    if (serverId != null && moderationAction != null) {
+        MemberModerationDialog(
+            action = moderationAction!!,
+            serverId = serverId,
+            user = user,
+            dismissUserSheet = dismissSheet,
+            onDismiss = { moderationAction = null },
+        )
+    }
 
     if (user.id == null) return Row {
         Button(
@@ -260,7 +300,7 @@ fun UserButtons(
                                 } else {
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.user_info_sheet_failed_to_open_dm),
+                                        resources.getString(R.string.user_info_sheet_failed_to_open_dm),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -390,6 +430,13 @@ fun UserButtons(
                                 text = {
                                     Text(stringResource(R.string.user_info_sheet_remove_friend))
                                 },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_person_off_24dp),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
                                 onClick = {
                                     scope.launch {
                                         try {
@@ -411,6 +458,13 @@ fun UserButtons(
                             text = {
                                 Text(stringResource(R.string.user_info_sheet_block))
                             },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_block_24dp),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            },
                             onClick = {
                                 scope.launch {
                                     try {
@@ -428,6 +482,13 @@ fun UserButtons(
                         text = {
                             Text(stringResource(R.string.user_info_sheet_copy_id))
                         },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_identifier_copy_24dp),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        },
                         onClick = {
                             scope.launch {
                                 clipboard.setText(AnnotatedString(user.id!!))
@@ -437,7 +498,17 @@ fun UserButtons(
 
                     DropdownMenuItem(
                         text = {
-                            Text(stringResource(R.string.user_info_sheet_report))
+                            Text(
+                                stringResource(R.string.user_info_sheet_report),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_flag_24dp),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         },
                         onClick = {
                             scope.launch {
@@ -446,13 +517,109 @@ fun UserButtons(
                                 if (Platform.needsShowClipboardNotification()) {
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.copied),
+                                        resources.getString(R.string.copied),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
                             }
                         }
                     )
+
+                    if (canEditServerIdentity || moderationPermissions?.any == true) {
+                        HorizontalDivider()
+
+                        if (canEditServerIdentity) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(R.string.server_identity_edit_member))
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_id_card_24dp),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    scope.launch {
+                                        dismissSheet()
+                                        ActionChannel.send(
+                                            Action.TopNavigate(
+                                                "settings/server/${serverId!!}/identity/${user.id!!}"
+                                            )
+                                        )
+                                    }
+                                },
+                            )
+                        }
+
+                        if (moderationPermissions?.canTimeout == true) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.member_moderation_timeout),
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_timer_24dp),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    moderationAction = MemberModerationAction.Timeout
+                                },
+                            )
+                        }
+
+                        if (moderationPermissions?.canKick == true) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.member_moderation_kick),
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_sports_and_outdoors_24dp),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    moderationAction = MemberModerationAction.Kick
+                                },
+                            )
+                        }
+
+                        if (moderationPermissions?.canBan == true) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = stringResource(R.string.member_moderation_ban),
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_gavel_24dp),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    moderationAction = MemberModerationAction.Ban
+                                },
+                            )
+                        }
+                    }
                 }
 
                 IconButton(

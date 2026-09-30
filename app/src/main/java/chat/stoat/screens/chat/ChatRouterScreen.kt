@@ -60,9 +60,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.core.app.NotificationManagerCompat
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -72,9 +70,11 @@ import chat.stoat.api.StoatAPI
 import chat.stoat.api.internals.DirectMessages
 import chat.stoat.api.realtime.DisconnectionState
 import chat.stoat.api.realtime.RealtimeSocket
+import chat.stoat.api.realtime.frames.receivable.ServerDeleteFrame
 import chat.stoat.api.routes.microservices.gazette.getLatestChangelog
 import chat.stoat.api.routes.push.subscribePush
 import chat.stoat.api.routes.user.fetchSelf
+import chat.stoat.api.settings.Experiments
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.User
 import chat.stoat.api.settings.SyncedSettings
@@ -101,14 +101,17 @@ import chat.stoat.sheets.EmoteInfoSheet
 import chat.stoat.sheets.LinkInfoSheet
 import chat.stoat.sheets.ReactionInfoSheet
 import chat.stoat.sheets.ServerContextSheet
+import chat.stoat.sheets.ServerFolderPickerSheet
 import chat.stoat.sheets.StatusSheet
 import chat.stoat.sheets.UserInfoSheet
+import chat.stoat.sheets.UserInfoSheet2
 import chat.stoat.sheets.WebHookUserSheet
 import chat.stoat.sheets.spark.SwipeToReplySparkSheet
 import com.google.android.gms.tasks.OnCompleteListener
 import com.google.firebase.messaging.FirebaseMessaging
 import io.sentry.Sentry
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -365,6 +368,7 @@ fun ChatRouterScreen(
 
     var showServerContextSheet by remember { mutableStateOf(false) }
     var serverContextSheetTarget by remember { mutableStateOf("") }
+    var showServerFolderPicker by remember { mutableStateOf(false) }
 
     var showUserContextSheet by remember { mutableStateOf(false) }
     var userContextSheetTarget by remember { mutableStateOf("") }
@@ -421,13 +425,6 @@ fun ChatRouterScreen(
         }
     }
 
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        if (RealtimeSocket.disconnectionState == DisconnectionState.Disconnected) {
-            RealtimeSocket.updateDisconnectionState(DisconnectionState.Reconnecting)
-            scope.launch { StoatAPI.connectWS() }
-        }
-    }
-
     LaunchedEffect(drawerState) {
         snapshotFlow { drawerState.currentValue }
             .distinctUntilChanged()
@@ -452,6 +449,16 @@ fun ChatRouterScreen(
 
     LaunchedEffect(Unit) {
         viewModel.maybeShowChangelog()
+    }
+
+    LaunchedEffect(currentServer) {
+        StoatAPI.wsFrameChannel
+            .filterIsInstance<ServerDeleteFrame>()
+            .collect { frame ->
+                if (frame.id == currentServer) {
+                    viewModel.setSaveDestination(ChatRouterDestination.Overview)
+                }
+            }
     }
 
     LaunchedEffect(Unit) {
@@ -660,11 +667,35 @@ fun ChatRouterScreen(
                     showServerContextSheet = false
                 },
                 onReportServer = {
-                    reportServerTarget = currentServer ?: ""
+                    reportServerTarget = serverContextSheetTarget
                     showReportServer = true
+                },
+                onPickFolder = {
+                    serverContextSheetState.hide()
+                    showServerContextSheet = false
+                    showServerFolderPicker = true
                 },
                 onNavigateToRoles = {
                     topNav.navigate("settings/server/$serverContextSheetTarget/roles")
+                }
+            )
+        }
+    }
+
+    if (showServerFolderPicker) {
+        val serverFolderPickerState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+        ModalBottomSheet(
+            sheetState = serverFolderPickerState,
+            onDismissRequest = {
+                showServerFolderPicker = false
+            }
+        ) {
+            ServerFolderPickerSheet(
+                serverId = serverContextSheetTarget,
+                onHideSheet = {
+                    serverFolderPickerState.hide()
+                    showServerFolderPicker = false
                 }
             )
         }
@@ -679,14 +710,23 @@ fun ChatRouterScreen(
                 showUserContextSheet = false
             }
         ) {
-            UserInfoSheet(
-                userId = userContextSheetTarget,
-                serverId = userContextSheetServer,
-                dismissSheet = {
-                    userContextSheetState.hide()
-                    showUserContextSheet = false
-                }
-            )
+            val dismissUserSheet: suspend () -> Unit = {
+                userContextSheetState.hide()
+                showUserContextSheet = false
+            }
+            if (Experiments.showUserSheet2.isEnabled) {
+                UserInfoSheet2(
+                    userId = userContextSheetTarget,
+                    serverId = userContextSheetServer,
+                    dismissSheet = dismissUserSheet,
+                )
+            } else {
+                UserInfoSheet(
+                    userId = userContextSheetTarget,
+                    serverId = userContextSheetServer,
+                    dismissSheet = dismissUserSheet,
+                )
+            }
         }
     }
 
@@ -905,8 +945,7 @@ fun ChatRouterScreen(
             DisconnectedNotice(
                 state = RealtimeSocket.disconnectionState,
                 onReconnect = {
-                    RealtimeSocket.updateDisconnectionState(DisconnectionState.Reconnecting)
-                    scope.launch { StoatAPI.connectWS() }
+                    StoatAPI.requestReconnect("user requested reconnect")
                 }
             )
         }

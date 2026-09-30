@@ -15,6 +15,8 @@ import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -35,7 +37,12 @@ import kotlin.enums.EnumEntries
 val SubcategoryContentInsets = PaddingValues(horizontal = 16.dp)
 
 interface SettingsPageScope {
-    fun showSnackbar(message: String)
+    fun showSnackbar(
+        message: String,
+        actionLabel: String? = null,
+        onAction: (() -> Unit)? = null,
+        dismissCurrent: Boolean = false,
+    )
 
     @Composable
     fun Subcategory(
@@ -88,6 +95,9 @@ interface SettingsPageScope {
 fun SettingsPage(
     navController: NavController?,
     title: @Composable () -> Unit,
+    onNavigateBack: (() -> Unit)? = null,
+    floatingActionButton: @Composable () -> Unit = {},
+    scrollable: Boolean = true,
     content: @Composable SettingsPageScope.() -> Unit
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -103,7 +113,7 @@ fun SettingsPage(
                 navigationIcon = {
                     navController?.let {
                         IconButton(onClick = {
-                            navController.popBackStack()
+                            onNavigateBack?.invoke() ?: navController.popBackStack()
                         }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_arrow_back_24dp),
@@ -117,19 +127,42 @@ fun SettingsPage(
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         },
+        floatingActionButton = floatingActionButton,
     ) { pv ->
         Column(
             Modifier
                 .padding(pv)
                 .imePadding()
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .then(
+                    if (scrollable) {
+                        Modifier.verticalScroll(rememberScrollState())
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             content(
                 object : SettingsPageScope {
-                    override fun showSnackbar(message: String) {
+                    override fun showSnackbar(
+                        message: String,
+                        actionLabel: String?,
+                        onAction: (() -> Unit)?,
+                        dismissCurrent: Boolean,
+                    ) {
                         scope.launch {
-                            snackbarHostState.showSnackbar(message)
+                            if (dismissCurrent) snackbarHostState.currentSnackbarData?.dismiss()
+                            val result = snackbarHostState.showSnackbar(
+                                message = message,
+                                actionLabel = actionLabel,
+                                withDismissAction = actionLabel != null,
+                                duration = if (actionLabel == null) {
+                                    SnackbarDuration.Short
+                                } else {
+                                    SnackbarDuration.Long
+                                },
+                            )
+                            if (result == SnackbarResult.ActionPerformed) onAction?.invoke()
                         }
                     }
                 }

@@ -57,13 +57,20 @@ import chat.stoat.R
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.routes.server.createChannelInServer
 import chat.stoat.api.routes.server.leaveOrDeleteServer
+import chat.stoat.api.settings.ServerFolders
+import chat.stoat.callbacks.Action
+import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.generic.SheetButton
 import chat.stoat.composables.markdown.prose.ChatMarkdown
 import chat.stoat.composables.screens.settings.ServerOverview
 import chat.stoat.core.model.data.STOAT_WEB_APP
 import chat.stoat.core.model.schemas.ChannelType
 import chat.stoat.internals.Platform
+import chat.stoat.internals.extensions.rememberServerPermissions
+import chat.stoat.internals.server.availableServerSettingsOptions
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 // Discord Modern Surface Tokens — match StoatUserCapsule
 private val SheetBg = Color(0xFF1E1F22)
@@ -78,8 +85,9 @@ private val TokenBlurple = Color(0xFF5865F2)
 fun ServerContextSheet(
     serverId: String,
     onReportServer: () -> Unit,
+    onPickFolder: suspend () -> Unit = {},
     onHideSheet: suspend () -> Unit,
-    onNavigateToRoles: (() -> Unit)? = null
+    onNavigateToRoles: (() -> Unit)? = null,
 ) {
     val server = StoatAPI.serverCache[serverId] ?: return
     val isOwner = server.owner == StoatAPI.selfId
@@ -87,8 +95,17 @@ fun ServerContextSheet(
     val coroutineScope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
+    val permissions by rememberServerPermissions(serverId)
+    val serverSettingsOptions = permissions?.let {
+        availableServerSettingsOptions(
+            permissions = it,
+            isOwner = server.owner == StoatAPI.selfId,
+        )
+    }.orEmpty()
 
     var showLeaveConfirmation by remember { mutableStateOf(false) }
+    val currentFolder = ServerFolders.folderOf(serverId)
+    val newFolderName = stringResource(R.string.server_folder_default_name)
     var leaveSilently by remember { mutableStateOf(false) }
     var showCreateChannelDialog by remember { mutableStateOf(false) }
     var newChannelName by remember { mutableStateOf("") }
@@ -315,121 +332,6 @@ fun ServerContextSheet(
 
         HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
-        // ─── SERVER SETTINGS (expandable subsection) ───
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { settingsExpanded = !settingsExpanded }
-                .padding(horizontal = 32.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_settings_24dp),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Text(
-                text = "Server Settings",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 16.sp,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                painter = painterResource(R.drawable.ic_arrow_back_24dp),
-                contentDescription = null,
-                tint = TokenMuted,
-                modifier = Modifier
-                    .size(18.dp)
-                    .rotate(settingsChevron - 90f)
-            )
-        }
-
-        AnimatedVisibility(
-            visible = settingsExpanded,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp)
-                    .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
-                    .background(SectionItemBg)
-            ) {
-                // Overview
-                ServerSettingSubItem(
-                    iconRes = R.drawable.ic_info_24dp,
-                    label = "Overview",
-                    onClick = {
-                        coroutineScope.launch {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, "$STOAT_WEB_APP/server/$serverId/settings".toUri())
-                            )
-                            onHideSheet()
-                        }
-                    }
-                )
-                // Roles
-                ServerSettingSubItem(
-                    iconRes = R.drawable.ic_shield_lock_24dp,
-                    label = "Roles",
-                    onClick = {
-                        coroutineScope.launch {
-                            onHideSheet()
-                            if (onNavigateToRoles != null) {
-                                onNavigateToRoles()
-                            } else {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, "$STOAT_WEB_APP/server/$serverId/settings/roles".toUri())
-                                )
-                            }
-                        }
-                    }
-                )
-                // Channels
-                ServerSettingSubItem(
-                    iconRes = R.drawable.ic_tag_24dp,
-                    label = "Channels",
-                    onClick = {
-                        coroutineScope.launch {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, "$STOAT_WEB_APP/server/$serverId/settings/channels".toUri())
-                            )
-                            onHideSheet()
-                        }
-                    }
-                )
-                // Members
-                ServerSettingSubItem(
-                    iconRes = R.drawable.ic_group_24dp,
-                    label = "Members",
-                    onClick = {
-                        coroutineScope.launch {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, "$STOAT_WEB_APP/server/$serverId/settings/members".toUri())
-                            )
-                            onHideSheet()
-                        }
-                    }
-                )
-                // Emojis
-                ServerSettingSubItem(
-                    iconRes = R.drawable.ic_add_reaction_24dp,
-                    label = "Emojis",
-                    onClick = {
-                        coroutineScope.launch {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, "$STOAT_WEB_APP/server/$serverId/settings/emojis".toUri())
-                            )
-                            onHideSheet()
-                        }
-                    }
-                )
-            }
-        }
-
         HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
         // ─── MARK AS READ ───
@@ -466,10 +368,97 @@ fun ServerContextSheet(
             }
         )
 
+        SheetButton(
+            leadingContent = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_folder_24dp),
+                    contentDescription = null
+                )
+            },
+            headlineContent = {
+                Text(stringResource(R.string.server_context_sheet_actions_add_to_folder))
+            },
+            onClick = {
+                if (ServerFolders.folders.isEmpty()) {
+                    coroutineScope.launch {
+                        onHideSheet()
+                        ServerFolders.create(newFolderName, listOf(serverId))
+                    }
+                } else {
+                    coroutineScope.launch { onPickFolder() }
+                }
+            }
+        )
+
+        if (currentFolder != null) {
+            SheetButton(
+                leadingContent = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_folder_off_24dp),
+                        contentDescription = null
+                    )
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.server_context_sheet_actions_remove_from_folder))
+                },
+                onClick = {
+                    coroutineScope.launch {
+                        onHideSheet()
+                        ServerFolders.removeServer(serverId)
+                    }
+                }
+            )
+        }
+
+        SheetButton(
+            leadingContent = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_id_card_24dp),
+                    contentDescription = null,
+                )
+            },
+            headlineContent = {
+                Text(stringResource(R.string.server_identity))
+            },
+            onClick = {
+                coroutineScope.launch {
+                    onHideSheet()
+                }
+                coroutineScope.launch {
+                    delay(100.milliseconds)
+                    ActionChannel.send(
+                        Action.TopNavigate("settings/server/$serverId/identity")
+                    )
+                }
+            },
+        )
+
+        if (serverSettingsOptions.isNotEmpty()) {
+            SheetButton(
+                leadingContent = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_settings_24dp),
+                        contentDescription = null,
+                    )
+                },
+                headlineContent = {
+                    Text(stringResource(R.string.server_settings))
+                },
+                onClick = {
+                    coroutineScope.launch {
+                        onHideSheet()
+                    }
+                    coroutineScope.launch {
+                        delay(100.milliseconds)
+                        ActionChannel.send(Action.TopNavigate("settings/server/$serverId"))
+                    }
+                },
+            )
+        }
+
         // ─── NON-OWNER: REPORT + LEAVE ───
         if (!isOwner) {
             HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-
             SheetButton(
                 leadingContent = {
                     Icon(painter = painterResource(R.drawable.ic_report_24dp), contentDescription = null)

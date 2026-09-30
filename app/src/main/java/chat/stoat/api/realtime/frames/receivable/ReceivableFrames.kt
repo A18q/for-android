@@ -171,7 +171,9 @@ data class ServerCreateFrame(
     val type: String = "ServerCreate",
     val id: String,
     val server: Server,
-    val channels: List<Channel>
+    val channels: List<Channel>,
+    val emojis: List<Emoji> = emptyList(),
+    @SerialName("voice_states") val voiceStates: List<ChannelVoiceState> = emptyList(),
 )
 
 @Serializable
@@ -179,7 +181,7 @@ data class ServerUpdateFrame(
     val type: String = "ServerUpdate",
     val id: String,
     val data: Server,
-    val clear: List<String>? = null // "Icon", "Banner" or "Description"
+    val clear: List<String>? = null // "Icon", "Banner", "Description" or "Categories"
 )
 
 @Serializable
@@ -218,6 +220,13 @@ data class ServerRoleUpdateFrame(
     val roleId: String,
     val data: Role,
     val clear: List<String>? = null // "Colour"
+)
+
+@Serializable
+data class ServerRoleRanksUpdateFrame(
+    val type: String = "ServerRoleRanksUpdate",
+    val id: String,
+    val ranks: List<String>,
 )
 
 @Serializable

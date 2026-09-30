@@ -127,8 +127,17 @@ import chat.stoat.screens.settings.SessionSettingsScreen
 import chat.stoat.screens.settings.SettingsScreen
 import chat.stoat.screens.settings.channel.ChannelSettingsHome
 import chat.stoat.screens.settings.channel.ChannelSettingsOverview
+import chat.stoat.screens.settings.channel.ChannelSettingsPermissionEditor
 import chat.stoat.screens.settings.channel.ChannelSettingsPermissions
-import chat.stoat.screens.settings.server.ServerRolesScreen
+import chat.stoat.screens.settings.server.ServerIdentitySettingsScreen
+import chat.stoat.screens.settings.server.ServerSettingsBans
+import chat.stoat.screens.settings.server.ServerSettingsChannels
+import chat.stoat.screens.settings.server.ServerSettingsEmojis
+import chat.stoat.screens.settings.server.ServerSettingsHome
+import chat.stoat.screens.settings.server.ServerSettingsInvites
+import chat.stoat.screens.settings.server.ServerSettingsOverview
+import chat.stoat.screens.settings.server.ServerSettingsRoleEditor
+import chat.stoat.screens.settings.server.ServerSettingsRoles
 import chat.stoat.ui.theme.StoatTheme
 import chat.stoat.voice.VoiceCallManager
 import io.ktor.client.request.get
@@ -771,11 +780,60 @@ fun AppEntrypoint(
                         val channelId = backStackEntry.arguments?.getString("channelId") ?: ""
                         ChannelSettingsPermissions(navController, channelId)
                     }
+                    composable(
+                        "settings/channel/{channelId}/permissions/{roleId}"
+                    ) { backStackEntry ->
+                        val channelId = backStackEntry.arguments?.getString("channelId") ?: ""
+                        val roleId = backStackEntry.arguments?.getString("roleId") ?: ""
+                        ChannelSettingsPermissionEditor(navController, channelId, roleId)
+                    }
 
+                    composable("settings/server/{serverId}") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        ServerSettingsHome(navController, serverId)
+                    }
+                    composable("settings/server/{serverId}/identity") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        StoatAPI.selfId?.let { selfId ->
+                            ServerIdentitySettingsScreen(navController, serverId, selfId)
+                        }
+                    }
+                    composable("settings/server/{serverId}/identity/{userId}") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        val userId = backStackEntry.arguments?.getString("userId") ?: ""
+                        ServerIdentitySettingsScreen(navController, serverId, userId)
+                    }
+                    composable("settings/server/{serverId}/overview") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        ServerSettingsOverview(navController, serverId)
+                    }
+                    composable("settings/server/{serverId}/emojis") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        ServerSettingsEmojis(navController, serverId)
+                    }
+                    composable("settings/server/{serverId}/invites") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        ServerSettingsInvites(navController, serverId)
+                    }
+                    composable("settings/server/{serverId}/bans") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        ServerSettingsBans(navController, serverId)
+                    }
+                    composable("settings/server/{serverId}/channels") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        ServerSettingsChannels(navController, serverId)
+                    }
                     composable("settings/server/{serverId}/roles") { backStackEntry ->
                         val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
-                        ServerRolesScreen(navController, serverId)
+                        ServerSettingsRoles(navController, serverId)
                     }
+                    composable("settings/server/{serverId}/roles/{roleId}") { backStackEntry ->
+                        val serverId = backStackEntry.arguments?.getString("serverId") ?: ""
+                        val roleId = backStackEntry.arguments?.getString("roleId") ?: ""
+                        ServerSettingsRoleEditor(navController, serverId, roleId)
+                    }
+
+
 
                     composable("channel/{channelId}/pins") { backStackEntry ->
                         val channelId = backStackEntry.arguments?.getString("channelId") ?: ""

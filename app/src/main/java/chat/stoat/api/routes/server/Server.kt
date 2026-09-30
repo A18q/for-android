@@ -1,11 +1,19 @@
 package chat.stoat.api.routes.server
 
+import chat.stoat.api.HitRateLimitException
+import chat.stoat.api.RateLimitResponse
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.StoatAPIError
 import chat.stoat.api.StoatHttp
 import chat.stoat.api.StoatJson
 import chat.stoat.api.api
+import chat.stoat.api.apiError
+import chat.stoat.core.model.schemas.BanListResult
+import chat.stoat.core.model.schemas.Category
+import chat.stoat.core.model.schemas.Channel
+import chat.stoat.core.model.schemas.ChannelType
 import chat.stoat.core.model.schemas.Member
+import chat.stoat.core.model.schemas.Server
 import chat.stoat.core.model.schemas.ServerWithChannelObjects
 import chat.stoat.core.model.schemas.User
 import io.ktor.client.request.delete
@@ -17,16 +25,40 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
 data class FetchMembersResponse(
     val members: List<Member>,
     val users: List<User>
+)
+
+@Serializable
+private data class BanMemberBody(
+    val reason: String? = null,
+    @SerialName("delete_message_seconds")
+    val deleteMessageSeconds: Long = 0,
+)
+
+@Serializable
+private data class EditMemberBody(
+    val nickname: String? = null,
+    val pronouns: String? = null,
+    val avatar: String? = null,
+    val roles: List<String>? = null,
+    val timeout: String? = null,
+    val remove: List<String> = emptyList(),
 )
 
 suspend fun ackServer(serverId: String) {
@@ -94,9 +126,232 @@ suspend fun fetchMember(serverId: String, userId: String, pure: Boolean = false)
     return member
 }
 
+suspend fun kickMember(serverId: String, userId: String) {
+    val response = StoatHttp.delete("/servers/$serverId/members/$userId".api())
+    val responseContent = response.bodyAsText()
+
+    if (!response.status.isSuccess()) {
+        throw Exception(apiError(responseContent, response.status.value))
+    }
+
+    StoatAPI.members.removeMember(serverId, userId)
+}
+
+suspend fun banMember(
+    serverId: String,
+    userId: String,
+    reason: String?,
+    deleteMessageSeconds: Long,
+) {
+    val body = BanMemberBody(
+        reason = reason?.trim()?.takeIf(String::isNotEmpty),
+        deleteMessageSeconds = deleteMessageSeconds,
+    )
+    val response = StoatHttp.put("/servers/$serverId/bans/$userId".api()) {
+        contentType(ContentType.Application.Json)
+        setBody(StoatJson.encodeToString(BanMemberBody.serializer(), body))
+    }
+    val responseContent = response.bodyAsText()
+
+    if (!response.status.isSuccess()) {
+        throw Exception(apiError(responseContent, response.status.value))
+    }
+
+    StoatAPI.members.removeMember(serverId, userId)
+}
+
+suspend fun fetchServerBans(serverId: String): BanListResult {
+    val response = StoatHttp.get("/servers/$serverId/bans".api())
+    val responseContent = response.bodyAsText()
+
+    if (!response.status.isSuccess()) {
+        throw Exception(apiError(responseContent, response.status.value))
+    }
+
+    return StoatJson.decodeFromString(BanListResult.serializer(), responseContent)
+}
+
+suspend fun unbanMember(serverId: String, userId: String) {
+    val response = StoatHttp.delete("/servers/$serverId/bans/$userId".api())
+
+    if (!response.status.isSuccess()) {
+        throw Exception(apiError(response.bodyAsText(), response.status.value))
+    }
+}
+
+suspend fun setMemberTimeout(serverId: String, userId: String, timeout: String?): Member {
+    return patchMember(
+        serverId = serverId,
+        userId = userId,
+        timeout = timeout,
+        remove = if (timeout == null) listOf("Timeout") else emptyList(),
+    )
+}
+
+suspend fun patchMemberIdentity(
+    serverId: String,
+    userId: String,
+    nickname: String? = null,
+    pronouns: String? = null,
+    avatar: String? = null,
+    remove: List<String> = emptyList(),
+): Member {
+    return patchMember(
+        serverId = serverId,
+        userId = userId,
+        nickname = nickname,
+        pronouns = pronouns,
+        avatar = avatar,
+        remove = remove,
+    )
+}
+
+suspend fun patchMember(
+    serverId: String,
+    userId: String,
+    nickname: String? = null,
+    pronouns: String? = null,
+    avatar: String? = null,
+    roles: List<String>? = null,
+    timeout: String? = null,
+    remove: List<String> = emptyList(),
+): Member {
+    val body = EditMemberBody(
+        nickname = nickname,
+        pronouns = pronouns,
+        avatar = avatar,
+        roles = roles,
+        timeout = timeout,
+        remove = remove,
+    )
+    val response = StoatHttp.patch("/servers/$serverId/members/$userId".api()) {
+        contentType(ContentType.Application.Json)
+        setBody(StoatJson.encodeToString(EditMemberBody.serializer(), body))
+    }
+    val responseContent = response.bodyAsText()
+
+    if (response.status == HttpStatusCode.TooManyRequests) {
+        val retryAfter = runCatching {
+            StoatJson.decodeFromString(
+                RateLimitResponse.serializer(),
+                responseContent,
+            ).retryAfter
+        }.getOrNull()
+            ?: response.headers["X-RateLimit-Reset-After"]?.toIntOrNull()
+        throw retryAfter?.let(::HitRateLimitException) ?: HitRateLimitException()
+    }
+
+    if (!response.status.isSuccess()) {
+        throw Exception(apiError(responseContent, response.status.value))
+    }
+
+    return StoatJson.decodeFromString(Member.serializer(), responseContent).also {
+        StoatAPI.members.setMember(serverId, it)
+    }
+}
+
 suspend fun leaveOrDeleteServer(serverId: String, leaveSilently: Boolean = false) {
-    StoatHttp.delete("/servers/$serverId".api()) {
+    val response = StoatHttp.delete("/servers/$serverId".api()) {
         parameter("leave_silently", leaveSilently)
+    }
+
+    if (!response.status.isSuccess()) {
+        val responseContent = response.bodyAsText()
+        throw Exception(apiError(responseContent, response.status.value))
+    }
+}
+
+suspend fun patchServer(
+    serverId: String,
+    name: String? = null,
+    description: String? = null,
+    icon: String? = null,
+    banner: String? = null,
+    categories: List<Category>? = null,
+    systemMessages: Map<String, String>? = null,
+    remove: List<String> = emptyList(),
+): Server {
+    val body = mutableMapOf<String, JsonElement>()
+
+    name?.let { body["name"] = JsonPrimitive(it) }
+    description?.let { body["description"] = JsonPrimitive(it) }
+    icon?.let { body["icon"] = JsonPrimitive(it) }
+    banner?.let { body["banner"] = JsonPrimitive(it) }
+    categories?.let {
+        body["categories"] = StoatJson.encodeToJsonElement(
+            ListSerializer(Category.serializer()),
+            it,
+        )
+    }
+    systemMessages?.let { messages ->
+        body["system_messages"] = JsonObject(
+            messages.mapValues { (_, channelId) -> JsonPrimitive(channelId) }
+        )
+    }
+    if (remove.isNotEmpty()) {
+        body["remove"] = StoatJson.encodeToJsonElement(
+            ListSerializer(String.serializer()),
+            remove,
+        )
+    }
+
+    val response = StoatHttp.patch("/servers/$serverId".api()) {
+        contentType(ContentType.Application.Json)
+        setBody(
+            StoatJson.encodeToString(
+                MapSerializer(String.serializer(), JsonElement.serializer()),
+                body,
+            )
+        )
+    }
+    val responseContent = response.bodyAsText()
+
+    if (!response.status.isSuccess()) {
+        throw Exception(apiError(responseContent, response.status.value))
+    }
+
+    val server = StoatJson.decodeFromString(Server.serializer(), responseContent)
+    StoatAPI.serverCache[serverId] = server
+    return server
+}
+
+@Serializable
+private data class CreateServerChannelBody(
+    val name: String,
+    val type: String,
+)
+
+suspend fun createServerChannel(
+    serverId: String,
+    name: String,
+    channelType: ChannelType,
+): Channel {
+    require(channelType == ChannelType.TextChannel || channelType == ChannelType.VoiceChannel)
+    val body = CreateServerChannelBody(
+        name = name,
+        type = if (channelType == ChannelType.VoiceChannel) "Voice" else "Text",
+    )
+    val response = StoatHttp.post("/servers/$serverId/channels".api()) {
+        contentType(ContentType.Application.Json)
+        setBody(StoatJson.encodeToString(CreateServerChannelBody.serializer(), body))
+    }
+    val responseContent = response.bodyAsText()
+
+    if (!response.status.isSuccess()) {
+        throw Exception(apiError(responseContent, response.status.value))
+    }
+
+    return StoatJson.decodeFromString(Channel.serializer(), responseContent).also { channel ->
+        channel.id?.let { channelId ->
+            StoatAPI.channelCache[channelId] = channel
+            StoatAPI.serverCache[serverId]?.let { server ->
+                if (channelId !in server.channels.orEmpty()) {
+                    StoatAPI.serverCache[serverId] = server.copy(
+                        channels = server.channels.orEmpty() + channelId,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -127,7 +382,6 @@ suspend fun createServer(
 
     return StoatJson.decodeFromString(ServerWithChannelObjects.serializer(), response.bodyAsText())
 }
-
 @Serializable
 data class CreateChannelBody(
     val type: String = "Text",
@@ -197,100 +451,4 @@ suspend fun editServer(
     val server = StoatJson.decodeFromString(chat.stoat.core.model.schemas.Server.serializer(), responseText)
     StoatAPI.serverCache[serverId] = server
     return server
-}
-
-@Serializable
-data class CreateRoleBody(
-    val name: String,
-    val rank: Double? = null
-)
-
-@Serializable
-data class NewRoleResponse(
-    val id: String,
-    val role: chat.stoat.core.model.schemas.Role
-)
-
-suspend fun createRole(
-    serverId: String,
-    name: String,
-    rank: Double? = null
-): NewRoleResponse {
-    val body = CreateRoleBody(name = name, rank = rank)
-    val responseText = StoatHttp.post("/servers/$serverId/roles".api()) {
-        contentType(ContentType.Application.Json)
-        setBody(StoatJson.encodeToString(CreateRoleBody.serializer(), body))
-    }.bodyAsText()
-
-    try {
-        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), responseText)
-        throw Exception(error.type)
-    } catch (e: SerializationException) {
-        // Not an error
-    }
-
-    val newRoleResponse = StoatJson.decodeFromString(NewRoleResponse.serializer(), responseText)
-    val server = StoatAPI.serverCache[serverId]
-    if (server != null) {
-        val newRoles = (server.roles ?: emptyMap()) + (newRoleResponse.id to newRoleResponse.role)
-        StoatAPI.serverCache[serverId] = server.copy(roles = newRoles)
-    }
-    return newRoleResponse
-}
-
-suspend fun editRole(
-    serverId: String,
-    roleId: String,
-    name: String? = null,
-    colour: String? = null,
-    hoist: Boolean? = null,
-    rank: Double? = null,
-    permissions: chat.stoat.core.model.schemas.PermissionDescription? = null,
-    remove: List<String>? = null
-): chat.stoat.core.model.schemas.Role {
-    val body = mutableMapOf<String, kotlinx.serialization.json.JsonElement>()
-    if (name != null) body["name"] = StoatJson.encodeToJsonElement(String.serializer(), name)
-    if (colour != null) body["colour"] = StoatJson.encodeToJsonElement(String.serializer(), colour)
-    if (hoist != null) body["hoist"] = StoatJson.encodeToJsonElement(Boolean.serializer(), hoist)
-    if (rank != null) body["rank"] = StoatJson.encodeToJsonElement(Double.serializer(), rank)
-    if (permissions != null) body["permissions"] = StoatJson.encodeToJsonElement(chat.stoat.core.model.schemas.PermissionDescription.serializer(), permissions)
-    if (remove != null) body["remove"] = StoatJson.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(String.serializer()), remove)
-
-    val responseText = StoatHttp.patch("/servers/$serverId/roles/$roleId".api()) {
-        contentType(ContentType.Application.Json)
-        setBody(
-            StoatJson.encodeToString(
-                MapSerializer(String.serializer(), kotlinx.serialization.json.JsonElement.serializer()),
-                body
-            )
-        )
-    }.bodyAsText()
-
-    try {
-        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), responseText)
-        throw Exception(error.type)
-    } catch (e: SerializationException) {
-        // Not an error
-    }
-
-    val role = StoatJson.decodeFromString(chat.stoat.core.model.schemas.Role.serializer(), responseText)
-    val server = StoatAPI.serverCache[serverId]
-    if (server != null) {
-        val newRoles = (server.roles ?: emptyMap()) + (roleId to role)
-        StoatAPI.serverCache[serverId] = server.copy(roles = newRoles)
-    }
-    return role
-}
-
-suspend fun deleteRole(
-    serverId: String,
-    roleId: String
-) {
-    StoatHttp.delete("/servers/$serverId/roles/$roleId".api())
-    val server = StoatAPI.serverCache[serverId]
-    if (server != null) {
-        val newRoles = (server.roles ?: emptyMap()).toMutableMap()
-        newRoles.remove(roleId)
-        StoatAPI.serverCache[serverId] = server.copy(roles = newRoles)
-    }
 }
