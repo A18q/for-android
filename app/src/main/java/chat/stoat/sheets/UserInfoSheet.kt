@@ -108,12 +108,18 @@ fun UserInfoSheet(
     val server = StoatAPI.serverCache[serverId]
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var profile by remember { mutableStateOf<Profile?>(null) }
+    var profile by remember(user) { mutableStateOf(user?.profile) }
     var profileNotFound by remember { mutableStateOf(false) }
 
-    LaunchedEffect(user) {
+    LaunchedEffect(user?.id) {
         try {
-            user?.id?.let { fetchUserProfile(it) }?.let { profile = it }
+            user?.id?.let { uid ->
+                val fetched = fetchUserProfile(uid)
+                profile = fetched
+                StoatAPI.userCache[uid]?.let { u ->
+                    StoatAPI.userCache[uid] = u.copy(profile = fetched)
+                }
+            }
         } catch (e: Exception) {
             if (e.message == "NotFound") {
                 profileNotFound = true
@@ -158,8 +164,13 @@ fun UserInfoSheet(
                 .height(175.dp)
         ) {
             val background = profile?.background
-            if (background != null) {
-                val bgUrl = "$STOAT_FILES/backgrounds/${background.id}/${background.filename}"
+            val bgId = background?.id
+            if (bgId != null && bgId.isNotBlank()) {
+                val bgUrl = if (!background.filename.isNullOrBlank()) {
+                    "$STOAT_FILES/backgrounds/$bgId/${background.filename}"
+                } else {
+                    "$STOAT_FILES/backgrounds/$bgId"
+                }
                 RemoteImage(
                     url = bgUrl,
                     description = null,

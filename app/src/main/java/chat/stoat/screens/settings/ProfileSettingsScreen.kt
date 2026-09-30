@@ -47,6 +47,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
+import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import chat.stoat.api.routes.microservices.autumn.uploadToAutumn
 import chat.stoat.api.routes.user.fetchUserProfile
 import chat.stoat.api.routes.user.patchSelf
@@ -55,7 +57,9 @@ import chat.stoat.composables.screens.settings.RawUserOverview
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.Profile
 import io.ktor.http.ContentType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
 
@@ -91,8 +95,15 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 try {
                     val profile = fetchUserProfile(self)
                     currentProfile = profile
-                    profile.background?.id?.let {
-                        backgroundModel = "$STOAT_FILES/backgrounds/${it}"
+                    profile.background?.let { bg ->
+                        val bgId = bg.id
+                        if (!bgId.isNullOrBlank()) {
+                            backgroundModel = if (!bg.filename.isNullOrBlank()) {
+                                "$STOAT_FILES/backgrounds/$bgId/${bg.filename}"
+                            } else {
+                                "$STOAT_FILES/backgrounds/$bgId"
+                            }
+                        }
                     }
                     pendingProfile = profile.copy()
                 } catch (e: Exception) {
@@ -106,115 +117,195 @@ class ProfileSettingsScreenViewModel(val context: Application) :
 
     }
 
-    fun saveNewPfp() {
+    private suspend fun prepareUploadFile(uri: Uri, prefix: String): Pair<File, Pair<String, String>> =
+        withContext(Dispatchers.IO) {
+            val mimeType = context.contentResolver.getType(uri) ?: "image/png"
+            val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
+                ?: when (mimeType) {
+                    "image/png" -> "png"
+                    "image/jpeg", "image/jpg" -> "jpg"
+                    "image/webp" -> "webp"
+                    "image/gif" -> "gif"
+                    else -> "png"
+                }
+
+            var resolvedName: String? = null
+            try {
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex != -1) {
+                            resolvedName = cursor.getString(nameIndex)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            val sanitizedName = resolvedName?.substringAfterLast('/')?.substringAfterLast('\\')
+            val fileName = if (!sanitizedName.isNullOrBlank() && sanitizedName.contains('.')) {
+                sanitizedName
+            } else {
+                "${prefix}_${System.currentTimeMillis()}.$extension"
+            }
+
+            val tempFile = File.createTempFile("stoat-$prefix-", ".$extension", context.cacheDir)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: throw IllegalArgumentException("Could not read image file")
+
+            Pair(tempFile, Pair(fileName, mimeType))
+        }
+
+    fun saveNewPfp(targetUri: Uri? = null) {
         uploadError = null
 
-        val uri = when (pfpModel) {
-            is Uri -> pfpModel as Uri
-            is String -> Uri.parse(pfpModel as String)
+        val uri = targetUri ?: when (val model = pfpModel) {
+            is Uri -> model
+            is String -> Uri.parse(model)
             else -> return
         }
 
-        val mFile = File(context.cacheDir, uri.lastPathSegment ?: "avatar")
-
-        mFile.outputStream().use { output ->
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                input.copyTo(output)
-            }
-        }
-
-        val mime = context.contentResolver.getType(uri)
-
         viewModelScope.launch {
+            var tempFile: File? = null
             try {
+                val (file, meta) = prepareUploadFile(uri, "avatar")
+                tempFile = file
+                val (fileName, mimeType) = meta
+
+                val parsedContentType = try {
+                    ContentType.parse(mimeType)
+                } catch (_: Exception) {
+                    ContentType.Image.PNG
+                }
+
                 val id = uploadToAutumn(
-                    mFile,
-                    uri.lastPathSegment ?: "avatar",
-                    "avatars",
-                    ContentType.parse(mime ?: "image/*"),
+                    file = file,
+                    name = fileName,
+                    tag = "avatars",
+                    contentType = parsedContentType,
                     onProgress = { soFar, outOf ->
-                        uploadProgress = soFar.toFloat() / outOf.toFloat()
+                        uploadProgress = if (outOf > 0) soFar.toFloat() / outOf.toFloat() else 0f
                     }
                 )
 
                 patchSelf(avatar = id)
+
+                pfpModel = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
+                    "$STOAT_FILES/avatars/${it}"
+                }
             } catch (e: Exception) {
-                uploadError = e.message
+                uploadError = e.message ?: "Failed to upload avatar"
+            } finally {
                 uploadProgress = 0f
-                return@launch
+                tempFile?.let { f ->
+                    withContext(Dispatchers.IO) { runCatching { f.delete() } }
+                }
             }
-
-            pfpModel = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
-                "$STOAT_FILES/avatars/${it}"
-            }
-
-            uploadProgress = 0f
         }
     }
 
-    fun saveNewBackground() {
+    fun saveNewBackground(targetUri: Uri? = null) {
         uploadError = null
 
-        val uri = when (backgroundModel) {
-            is Uri -> backgroundModel as Uri
-            is String -> Uri.parse(backgroundModel as String)
+        val uri = targetUri ?: when (val model = backgroundModel) {
+            is Uri -> model
+            is String -> Uri.parse(model)
             else -> return
         }
 
-        val mFile = File(context.cacheDir, uri.lastPathSegment ?: "background")
-
-        mFile.outputStream().use { output ->
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                input.copyTo(output)
-            }
-        }
-
-        val mime = context.contentResolver.getType(uri)
-
         viewModelScope.launch {
+            var tempFile: File? = null
             try {
+                val (file, meta) = prepareUploadFile(uri, "profile_bg")
+                tempFile = file
+                val (fileName, mimeType) = meta
+
+                val parsedContentType = try {
+                    ContentType.parse(mimeType)
+                } catch (_: Exception) {
+                    ContentType.Image.PNG
+                }
+
                 val id = uploadToAutumn(
-                    mFile,
-                    uri.lastPathSegment ?: "background",
-                    "backgrounds",
-                    ContentType.parse(mime ?: "image/*"),
+                    file = file,
+                    name = fileName,
+                    tag = "backgrounds",
+                    contentType = parsedContentType,
                     onProgress = { soFar, outOf ->
-                        uploadProgress = soFar.toFloat() / outOf.toFloat()
+                        uploadProgress = if (outOf > 0) soFar.toFloat() / outOf.toFloat() else 0f
                     }
                 )
 
-                patchSelf(background = id)
+                patchSelf(
+                    background = id,
+                    bio = pendingProfile?.content?.takeIf { it.isNotBlank() }
+                )
+
+                StoatAPI.selfId?.let { selfId ->
+                    val profile = fetchUserProfile(selfId)
+                    currentProfile = profile
+                    pendingProfile = profile
+
+                    StoatAPI.userCache[selfId]?.let { u ->
+                        StoatAPI.userCache[selfId] = u.copy(profile = profile)
+                    }
+
+                    backgroundModel = profile.background?.let { bg ->
+                        val bgId = bg.id
+                        if (!bgId.isNullOrBlank()) {
+                            if (!bg.filename.isNullOrBlank()) {
+                                "$STOAT_FILES/backgrounds/$bgId/${bg.filename}"
+                            } else {
+                                "$STOAT_FILES/backgrounds/$bgId"
+                            }
+                        } else null
+                    }
+                }
             } catch (e: Exception) {
-                uploadError = e.message
+                uploadError = e.message ?: "Failed to upload background"
+            } finally {
                 uploadProgress = 0f
-                return@launch
-            }
-
-            backgroundModel = StoatAPI.selfId?.let {
-                val profile = fetchUserProfile(it)
-                currentProfile = profile
-                pendingProfile = profile
-
-                profile.background?.let { bg ->
-                    "$STOAT_FILES/backgrounds/${bg.id}/${bg.filename}"
+                tempFile?.let { f ->
+                    withContext(Dispatchers.IO) { runCatching { f.delete() } }
                 }
             }
-
-            uploadProgress = 0f
         }
     }
 
     fun removePfp() {
         viewModelScope.launch {
-            patchSelf(remove = listOf("Avatar"))
-            pfpModel = null
+            try {
+                patchSelf(remove = listOf("Avatar"))
+                pfpModel = null
+                StoatAPI.selfId?.let { selfId ->
+                    StoatAPI.userCache[selfId]?.let { u ->
+                        StoatAPI.userCache[selfId] = u.copy(avatar = null)
+                    }
+                }
+            } catch (e: Exception) {
+                uploadError = e.message
+            }
         }
     }
 
     fun removeBackground() {
         viewModelScope.launch {
-            patchSelf(remove = listOf("ProfileBackground"))
-            backgroundModel = null
+            try {
+                patchSelf(remove = listOf("ProfileBackground"))
+                backgroundModel = null
+                StoatAPI.selfId?.let { selfId ->
+                    val profile = fetchUserProfile(selfId)
+                    currentProfile = profile
+                    pendingProfile = profile
+                    StoatAPI.userCache[selfId]?.let { u ->
+                        StoatAPI.userCache[selfId] = u.copy(profile = profile)
+                    }
+                }
+            } catch (e: Exception) {
+                uploadError = e.message
+            }
         }
     }
 
@@ -222,17 +313,26 @@ class ProfileSettingsScreenViewModel(val context: Application) :
         bioError = null
         viewModelScope.launch {
             try {
-                patchSelf(bio = pendingProfile?.content)
+                patchSelf(
+                    bio = pendingProfile?.content,
+                    background = currentProfile?.background?.id
+                )
 
-                fetchUserProfile(StoatAPI.selfId!!).let {
-                    currentProfile = it
-                    pendingProfile = it
+                StoatAPI.selfId?.let { selfId ->
+                    val profile = fetchUserProfile(selfId)
+                    currentProfile = profile
+                    pendingProfile = profile
+                    StoatAPI.userCache[selfId]?.let { u ->
+                        StoatAPI.userCache[selfId] = u.copy(profile = profile)
+                    }
                 }
             } catch (e: Exception) {
                 bioError = e.message
             }
         }
     }
+
+
 
     fun savePronouns() {
         pronounsError = null
@@ -388,9 +488,9 @@ fun ProfileSettingsScreen(
                                 currentModel = viewModel.pfpModel,
                                 circular = true,
                                 useAvatarCircularity = true,
-                                onPick = {
-                                    viewModel.pfpModel = it.toString()
-                                    viewModel.saveNewPfp()
+                                onPick = { uri ->
+                                    viewModel.pfpModel = uri
+                                    viewModel.saveNewPfp(uri)
                                 },
                                 canRemove = true,
                                 onRemove = {
@@ -412,9 +512,9 @@ fun ProfileSettingsScreen(
 
                             InlineMediaPicker(
                                 currentModel = viewModel.backgroundModel,
-                                onPick = {
-                                    viewModel.backgroundModel = it.toString()
-                                    viewModel.saveNewBackground()
+                                onPick = { uri ->
+                                    viewModel.backgroundModel = uri
+                                    viewModel.saveNewBackground(uri)
                                 },
                                 canRemove = true,
                                 onRemove = {

@@ -55,6 +55,30 @@ import chat.stoat.core.model.schemas.User
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+fun resolveAutumnBackgroundUrl(background: Any?, backgroundUrl: String? = null): String? {
+    if (!backgroundUrl.isNullOrBlank()) return backgroundUrl
+    return when (background) {
+        is AutumnResource -> {
+            val id = background.id
+            if (!id.isNullOrBlank()) {
+                if (!background.filename.isNullOrBlank()) {
+                    "$STOAT_FILES/backgrounds/$id/${background.filename}"
+                } else {
+                    "$STOAT_FILES/backgrounds/$id"
+                }
+            } else null
+        }
+        is String -> {
+            if (background.startsWith("http://") || background.startsWith("https://") || background.startsWith("content://") || background.startsWith("file://")) {
+                background
+            } else {
+                "$STOAT_FILES/backgrounds/$background"
+            }
+        }
+        else -> null
+    }
+}
+
 @Composable
 fun SelfUserOverview() {
     val selfUser = StoatAPI.userCache[StoatAPI.selfId] ?: return
@@ -139,10 +163,10 @@ fun RawUserOverview(
                 .height(115.dp)
         ) {
             // Banner Background
-            if (background != null) {
+            val resolvedBg = resolveAutumnBackgroundUrl(background, backgroundUrl)
+            if (resolvedBg != null) {
                 RemoteImage(
-                    url = backgroundUrl
-                        ?: "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}",
+                    url = resolvedBg,
                     description = null,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -258,10 +282,10 @@ fun RawUserOverview2(
         val contentColour = LocalContentColor.current
         val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
 
-        if (background != null) {
+        val resolvedBg = resolveAutumnBackgroundUrl(background, backgroundUrl)
+        if (resolvedBg != null) {
             RemoteImage(
-                url = backgroundUrl
-                    ?: "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}",
+                url = resolvedBg,
                 description = null,
                 modifier = Modifier
                     .clip(MaterialTheme.shapes.large)

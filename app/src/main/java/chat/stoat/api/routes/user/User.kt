@@ -122,6 +122,13 @@ suspend fun patchSelf(
         throw retryAfter?.let(::HitRateLimitException) ?: HitRateLimitException()
     }
 
+    if (response.status != HttpStatusCode.OK && response.status != HttpStatusCode.NoContent) {
+        val error = runCatching {
+            StoatJson.decodeFromString(StoatAPIError.serializer(), responseContent)
+        }.getOrNull()
+        throw Exception(error?.type ?: "Error ${response.status.value}: $responseContent")
+    }
+
     if (StoatAPI.selfId == null) {
         throw Error("Self ID is null")
     }
@@ -136,6 +143,18 @@ suspend fun patchSelf(
 
     if ("Pronouns" in remove.orEmpty()) {
         mergedUser = mergedUser.copy(pronouns = null)
+    }
+
+    if ("Avatar" in remove.orEmpty()) {
+        mergedUser = mergedUser.copy(avatar = null)
+    }
+
+    if ("ProfileBackground" in remove.orEmpty()) {
+        mergedUser = mergedUser.copy(profile = mergedUser.profile?.copy(background = null))
+    }
+
+    if ("ProfileContent" in remove.orEmpty()) {
+        mergedUser = mergedUser.copy(profile = mergedUser.profile?.copy(content = null))
     }
 
     if (!pure) {

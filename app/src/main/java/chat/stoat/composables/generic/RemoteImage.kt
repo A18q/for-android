@@ -35,13 +35,15 @@ fun RemoteImage(
                 ).dp
     }
 
+    val dimensionModifier = modifier
+        .then(if (width > 0) Modifier.width(pxAsDp(width)) else Modifier)
+        .then(if (height > 0) Modifier.height(pxAsDp(height)) else Modifier)
+
     GlideImage(
         model = url,
         contentDescription = description,
         contentScale = contentScale,
-        modifier = modifier
-            .width(pxAsDp(width))
-            .height(pxAsDp(height)),
+        modifier = dimensionModifier,
         transition = CrossFade,
         requestBuilderTransform = { rb ->
             if (!allowAnimation) rb.dontAnimate() else rb
