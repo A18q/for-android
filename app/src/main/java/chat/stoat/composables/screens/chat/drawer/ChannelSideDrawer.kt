@@ -63,6 +63,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -104,6 +105,8 @@ import chat.stoat.core.model.util.UserVoiceState
 import chat.stoat.screens.chat.ChatRouterDestination
 import chat.stoat.screens.chat.LocalIsConnected
 import chat.stoat.sheets.ChannelContextSheet
+import chat.stoat.sheets.UserInfoSheet
+import androidx.compose.foundation.shape.RoundedCornerShape
 import chat.stoat.ui.theme.FragmentMono
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -197,6 +200,25 @@ fun ChannelSideDrawer(
     }.sortedBy { it.id }))
 
     var channelContextSheetTarget by remember { mutableStateOf<String?>(null) }
+    var showSelfProfileSheet by remember { mutableStateOf(false) }
+
+    if (showSelfProfileSheet && StoatAPI.selfId != null) {
+        val selfSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        ModalBottomSheet(
+            sheetState = selfSheetState,
+            onDismissRequest = { showSelfProfileSheet = false },
+            containerColor = Color(0xFF1E1F22)
+        ) {
+            UserInfoSheet(
+                userId = StoatAPI.selfId!!,
+                serverId = currentServer,
+                dismissSheet = {
+                    selfSheetState.hide()
+                    showSelfProfileSheet = false
+                }
+            )
+        }
+    }
 
     if (channelContextSheetTarget != null) {
         val channelContextSheetState = rememberModalBottomSheetState()
@@ -221,47 +243,64 @@ fun ChannelSideDrawer(
 
     Row(modifier.fillMaxSize()) {
         LazyColumn(
-            Modifier.width(64.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            Modifier
+                .width(68.dp)
+                .fillMaxHeight()
+                .background(Color(0xFF1E1F22)),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             contentPadding = PaddingValues(
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 8.dp
             )
         ) {
-            stickyHeader(key = "self") {
-                Column(Modifier.background(MaterialTheme.colorScheme.background)) {
+            stickyHeader(key = "dms") {
+                Column(
+                    Modifier
+                        .background(Color(0xFF1E1F22))
+                        .padding(top = 8.dp)
+                ) {
                     AnimatedVisibility(LocalIsConnected.current) {
                         Spacer(
-                            Modifier
-                                .height(
-                                    WindowInsets.statusBars.asPaddingValues()
-                                        .calculateTopPadding()
-                                )
+                            Modifier.height(
+                                WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                            )
                         )
                     }
-                    UserAvatar(
-                        username = StoatAPI.userCache[StoatAPI.selfId]?.let {
-                            User.resolveDefaultName(
-                                it
+                    val isDMsActive = currentServer == null
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Left active white pill indicator
+                        Box(
+                            Modifier
+                                .width(4.dp)
+                                .height(if (isDMsActive) 36.dp else 0.dp)
+                                .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+                                .background(Color.White)
+                                .align(Alignment.CenterStart)
+                        )
+
+                        Box(
+                            Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(if (isDMsActive) 16.dp else 24.dp))
+                                .background(if (isDMsActive) Color(0xFF5865F2) else Color(0xFF313338))
+                                .clickable {
+                                    onDestinationChanged(ChatRouterDestination.defaultForDMList)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_chat_24dp),
+                                contentDescription = stringResource(R.string.direct_messages),
+                                tint = if (isDMsActive) Color.White else Color(0xFFDBDEE1),
+                                modifier = Modifier.size(24.dp)
                             )
                         }
-                            ?: "",
-                        presence = presenceFromStatus(
-                            StoatAPI.userCache[StoatAPI.selfId]?.status?.presence,
-                            StoatAPI.userCache[StoatAPI.selfId]?.online ?: false
-                        ),
-                        userId = StoatAPI.selfId ?: "",
-                        avatar = StoatAPI.userCache[StoatAPI.selfId]?.avatar,
-                        size = 48.dp,
-                        presenceSize = 16.dp,
-                        onClick = {
-                            onDestinationChanged(ChatRouterDestination.defaultForDMList)
-                        },
-                        onLongClick = onLongPressAvatar,
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .size(48.dp)
-                    )
+                    }
                 }
             }
 
@@ -349,8 +388,9 @@ fun ChannelSideDrawer(
                     voiceParticipants.isNotEmpty() -> R.drawable.ic_volume_up_24dp
                     else -> null
                 }
+                val isCurrentServer = serverInList.id == currentServer
                 val leftIndicatorHeight = animateDpAsState(
-                    targetValue = if (serverInList.id == currentServer) 32.dp
+                    targetValue = if (isCurrentServer) 36.dp
                     else if (serverHasUnread) 8.dp
                     else 0.dp,
                     animationSpec = spring(
@@ -360,10 +400,10 @@ fun ChannelSideDrawer(
                 )
                 val leftIndicatorColour = animateColorAsState(
                     targetValue =
-                        if (serverInList.id == currentServer)
-                            MaterialTheme.colorScheme.primary
+                        if (isCurrentServer)
+                            Color.White
                         else if (serverHasUnread)
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            Color.White.copy(alpha = 0.7f)
                         else
                             Color.Transparent,
                     animationSpec = spring(
@@ -385,7 +425,7 @@ fun ChannelSideDrawer(
                         }
                         val iconModifier = Modifier
                             .size(48.dp)
-                            .clip(CircleShape)
+                            .clip(RoundedCornerShape(if (isCurrentServer) 16.dp else 24.dp))
                             .then(
                                 if (voiceBadgeIcon != null) {
                                     Modifier.bottomEndCircleCutout(ServerVoiceBadgeSize)
@@ -643,6 +683,14 @@ fun ChannelSideDrawer(
                     serverId = currentServer
                 )
             }
+
+            // Modern Discord Floating User Capsule
+            StoatUserCapsule(
+                onOpenProfile = { showSelfProfileSheet = true },
+                onOpenSettings = onOpenSettings,
+                onOpenNotifications = { onDestinationChanged(ChatRouterDestination.Overview) },
+                modifier = Modifier.padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 6.dp)
+            )
         }
     }
 }
@@ -656,12 +704,12 @@ fun ColumnScope.DirectMessagesChannelListRenderer(
     onOpenChannelContextSheet: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val dmAbleChannels =
+    val dmAbleChannels = remember(StoatAPI.channelCache.values) {
         StoatAPI.channelCache.values
             .filter { it.channelType == ChannelType.DirectMessage || it.channelType == ChannelType.Group }
             .filter { if (it.channelType == ChannelType.DirectMessage) it.active == true else true }
-            .sortedBy { it.lastMessageID ?: it.id }
-            .reversed()
+            .sortedByDescending { it.lastMessageID ?: it.id }
+    }
 
     LazyColumn(
         state = channelListState,
@@ -670,23 +718,36 @@ fun ColumnScope.DirectMessagesChannelListRenderer(
             .weight(1f)
     ) {
         item(key = "overview") {
-            ChannelItem(
-                channel = Channel(
-                    id = "overview",
-                    name = stringResource(R.string.overview_screen_title),
-                    channelType = ChannelType.TextChannel
-                ),
-                iconType = ChannelItemIconType.Painter(painterResource(R.drawable.ic_star_shine_24dp)),
-                isCurrent = currentDestination is ChatRouterDestination.Overview,
-                onDestinationChanged = {
-                    onDestinationChanged(ChatRouterDestination.Overview)
-                    scope.launch {
-                        drawerState?.close()
+            val isOverviewCurrent = currentDestination is ChatRouterDestination.Overview
+            val overviewBg = if (isOverviewCurrent) Color(0xFF35373C) else Color.Transparent
+            val overviewColor = if (isOverviewCurrent) Color(0xFFF2F3F5) else Color(0xFF949BA4)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .background(overviewBg)
+                    .clickable {
+                        onDestinationChanged(ChatRouterDestination.Overview)
+                        scope.launch { drawerState?.close() }
                     }
-                },
-                hasUnread = false,
-                onOpenChannelContextSheet = {}
-            )
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_chat_24dp),
+                    contentDescription = null,
+                    tint = overviewColor,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "Direct Messages",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = overviewColor
+                )
+            }
             Spacer(Modifier.height(4.dp))
         }
 
@@ -1146,16 +1207,41 @@ private fun VoiceChannelParticipantRow(
 
 @Composable
 fun CategoryItem(
-    category: Category
+    category: Category,
+    isExpanded: Boolean = true,
+    onToggle: () -> Unit = {}
 ) {
-    Text(
-        text = category.title ?: stringResource(R.string.unknown),
-        style = MaterialTheme.typography.labelLarge,
-        fontSize = 16.sp,
-        modifier = Modifier.padding(
-            start = 24.dp, end = 24.dp, top = 24.dp, bottom = 16.dp
-        )
+    val rotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isExpanded) 90f else 0f,
+        label = "category_chevron_rotation"
     )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_keyboard_arrow_right_24dp),
+            contentDescription = null,
+            tint = Color(0xFF949BA4),
+            modifier = Modifier
+                .size(12.dp)
+                .rotate(rotation)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = (category.title ?: stringResource(R.string.unknown)).uppercase(),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.6.sp,
+            color = Color(0xFF949BA4),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1169,19 +1255,17 @@ fun DMOrGroupItem(
     onDestinationChanged: (ChatRouterDestination) -> Unit,
     onOpenChannelContextSheet: (String) -> Unit
 ) {
-    val currentIndicatorOpacity = animateFloatAsState(
-        targetValue = if (isCurrent) 1f else 0f,
-        animationSpec = tween(durationMillis = 150),
-        label = "Current indicator opacity"
-    )
-    val currentIndicatorSize = animateDpAsState(
-        targetValue = if (isCurrent) 24.dp else 0.dp,
-        animationSpec = tween(durationMillis = 150),
-        label = "Current indicator size"
-    )
+    val backgroundColor = if (isCurrent) Color(0xFF35373C) else Color.Transparent
+    val nameColor = if (isCurrent) Color(0xFFF2F3F5) else Color(0xFF949BA4)
+    val previewText = channel.lastMessageID?.let { chat.stoat.api.StoatAPI.messageCache[it]?.content } ?: ""
 
     Row(
         Modifier
+            .padding(horizontal = 8.dp)
+            .height(40.dp)
+            .fillMaxWidth()
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+            .background(backgroundColor)
             .combinedClickable(
                 onLongClickLabel = stringResource(R.string.channel_context_sheet_open),
                 onLongClick = {
@@ -1195,83 +1279,66 @@ fun DMOrGroupItem(
                     }
                 }
             )
-            .padding(vertical = 16.dp)
-            .fillMaxWidth()
-            .clipToBounds()
             .then(
-                if (isMuted) {
-                    Modifier.alpha(0.5f)
-                } else {
-                    Modifier
-                }
+                if (isMuted) Modifier.alpha(0.5f) else Modifier
             )
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .offset(x = (-4).dp)
-                .clip(
-                    CircleShape
-                        .copy(
-                            topStart = CornerSize(0),
-                            bottomStart = CornerSize(0)
-                        )
-                )
-                .background(MaterialTheme.colorScheme.primary)
-                .height(currentIndicatorSize.value)
-                .width(8.dp)
-                .alpha(currentIndicatorOpacity.value)
-                .align(Alignment.CenterVertically)
-        )
+        val name = when (channel.channelType) {
+            ChannelType.Group -> channel.name ?: stringResource(R.string.unknown)
+            else -> partner?.let { User.resolveDefaultName(it) } ?: channel.name ?: stringResource(R.string.unknown)
+        }
 
-        Row(
-            Modifier
-                .weight(1f)
-                .padding(start = 12.dp, end = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            when (channel.channelType) {
-                ChannelType.Group -> GroupIcon(
-                    name = channel.name ?: stringResource(R.string.unknown),
-                    size = 28.dp,
-                    icon = channel.icon
-                )
+        when (channel.channelType) {
+            ChannelType.Group -> GroupIcon(
+                name = name,
+                size = 36.dp,
+                icon = channel.icon
+            )
+            else -> UserAvatar(
+                username = name,
+                presence = presenceFromStatus(
+                    partner?.status?.presence,
+                    partner?.online ?: false
+                ),
+                userId = partner?.id ?: channel.id ?: "",
+                avatar = partner?.avatar ?: channel.icon,
+                size = 36.dp,
+                presenceSize = 12.dp
+            )
+        }
 
-                else -> UserAvatar(
-                    username = partner?.let { User.resolveDefaultName(it) } ?: channel.name
-                    ?: stringResource(R.string.unknown),
-                    presence = presenceFromStatus(
-                        partner?.status?.presence,
-                        partner?.online ?: false
-                    ),
-                    userId = partner?.id ?: channel.id ?: "",
-                    avatar = partner?.avatar ?: channel.icon,
-                    size = 28.dp,
-                    presenceSize = 12.dp
-                )
-            }
+        Spacer(Modifier.width(12.dp))
 
-            Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = name,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = nameColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (previewText.isNotBlank()) {
                 Text(
-                    text = partner?.let { User.resolveDefaultName(it) } ?: channel.name
-                    ?: stringResource(R.string.unknown),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
+                    text = previewText,
+                    fontSize = 12.sp,
+                    color = Color(0xFF949BA4),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
 
-            if (hasUnread && !isCurrent) {
-                Box(
-                    Modifier
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .requiredSize(8.dp)
-                )
-            }
+        if (hasUnread && !isCurrent) {
+            Box(
+                Modifier
+                    .padding(start = 8.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Color(0xFFED4245))
+                    .requiredSize(8.dp)
+            )
         }
     }
 }

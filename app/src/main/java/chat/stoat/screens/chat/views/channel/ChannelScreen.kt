@@ -143,6 +143,7 @@ import chat.stoat.composables.chat.MessageField
 import chat.stoat.composables.chat.SystemMessage
 import chat.stoat.composables.emoji.EmojiPicker
 import chat.stoat.composables.generic.GroupIcon
+import chat.stoat.composables.screens.chat.ConversationStartHeader
 import chat.stoat.composables.generic.PresenceBadge
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.UserAvatarWidthPlaceholder
@@ -1037,6 +1038,18 @@ fun ChannelScreen(
                                                 }
                                             }
                                         }
+                                    }
+                                }
+
+                                // Discord Start of Conversation Header (shown when reached the beginning of chat history or empty)
+                                if (!viewModel.canLoadOlder && !viewModel.isInitialLoading) {
+                                    item(key = "conversation_start_header") {
+                                        ConversationStartHeader(
+                                            channel = viewModel.channel,
+                                            onWave = {
+                                                viewModel.putAtCursorPosition("👋")
+                                            }
+                                        )
                                     }
                                 }
                             }

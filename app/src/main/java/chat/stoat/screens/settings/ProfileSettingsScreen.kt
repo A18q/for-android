@@ -200,8 +200,8 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 currentProfile = profile
                 pendingProfile = profile
 
-                profile.background?.id?.let {
-                    "$STOAT_FILES/backgrounds/${it}"
+                profile.background?.let { bg ->
+                    "$STOAT_FILES/backgrounds/${bg.id}/${bg.filename}"
                 }
             }
 

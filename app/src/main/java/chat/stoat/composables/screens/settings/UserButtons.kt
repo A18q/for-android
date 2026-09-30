@@ -2,11 +2,16 @@ package chat.stoat.composables.screens.settings
 
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -25,12 +30,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.routes.user.acceptFriendRequest
@@ -88,6 +95,44 @@ fun UserButtons(
         when (user.relationship) {
             "None" -> {
                 if (user.bot == null) {
+                    // Discord 1:1 layout: Minimalist icon Message button + Add Friend button
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .background(Color(0xFF35373C))
+                            .clickable {
+                                scope.launch {
+                                    try {
+                                        val dm = openDM(user.id!!)
+                                        if (dm.id != null) {
+                                            if (StoatAPI.channelCache[dm.id] == null)
+                                                StoatAPI.channelCache[dm.id!!] = dm
+                                            ActionChannel.send(Action.SwitchChannel(dm.id!!))
+                                            dismissSheet()
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.user_info_sheet_failed_to_open_dm),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        logcat(LogPriority.ERROR) { e.asLog() }
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_chat_24dp),
+                            contentDescription = stringResource(R.string.user_info_sheet_send_message),
+                            tint = Color(0xFFDBDEE1),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Compact Discord Add Friend Button
                     Button(
                         onClick = {
                             scope.launch {
@@ -99,11 +144,58 @@ fun UserButtons(
                                 }
                             }
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF5865F2),
+                            contentColor = Color.White
+                        )
                     ) {
-                        Text(stringResource(R.string.user_info_sheet_add_friend))
+                        Icon(
+                            painter = painterResource(R.drawable.ic_person_add_24dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.user_info_sheet_add_friend),
+                            fontSize = 13.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                        )
                     }
                 } else {
+                    // Bot — minimalist icon message button only
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .background(Color(0xFF35373C))
+                            .clickable {
+                                scope.launch {
+                                    try {
+                                        val dm = openDM(user.id!!)
+                                        if (dm.id != null) {
+                                            if (StoatAPI.channelCache[dm.id] == null)
+                                                StoatAPI.channelCache[dm.id!!] = dm
+                                            ActionChannel.send(Action.SwitchChannel(dm.id!!))
+                                            dismissSheet()
+                                        }
+                                    } catch (e: Exception) {
+                                        logcat(LogPriority.ERROR) { e.asLog() }
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_chat_24dp),
+                            contentDescription = stringResource(R.string.user_info_sheet_send_message),
+                            tint = Color(0xFFDBDEE1),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(
                             8.dp,
@@ -111,15 +203,16 @@ fun UserButtons(
                         ),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
+                            .weight(1f)
                             .animateContentSize()
                             .clip(MaterialTheme.shapes.small)
                             .clickable { botEasterEgg = true }
                             .padding(8.dp)
-                            .weight(1f)
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_smart_toy_24dp),
-                            contentDescription = null
+                            contentDescription = null,
+                            tint = Color(0xFF949BA4)
                         )
                         Text(
                             if (botEasterEgg) {
@@ -127,7 +220,8 @@ fun UserButtons(
                             } else {
                                 stringResource(R.string.user_info_sheet_user_is_bot)
                             },
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF949BA4)
                         )
                     }
                 }
@@ -150,29 +244,62 @@ fun UserButtons(
             }
 
             "Friend" -> {
-                FilledTonalButton(
-                    onClick = {
-                        scope.launch {
-                            val dm = openDM(user.id!!)
-                            if (dm.id != null) {
-                                if (StoatAPI.channelCache[dm.id] == null)
-                                    StoatAPI.channelCache[dm.id!!] = dm
-                                ActionChannel.send(Action.SwitchChannel(dm.id!!))
-                                dismissSheet()
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.user_info_sheet_failed_to_open_dm),
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(Color(0xFF35373C))
+                        .clickable {
+                            scope.launch {
+                                val dm = openDM(user.id!!)
+                                if (dm.id != null) {
+                                    if (StoatAPI.channelCache[dm.id] == null)
+                                        StoatAPI.channelCache[dm.id!!] = dm
+                                    ActionChannel.send(Action.SwitchChannel(dm.id!!))
+                                    dismissSheet()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.user_info_sheet_failed_to_open_dm),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             }
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(stringResource(R.string.user_info_sheet_send_message))
+                    Icon(
+                        painter = painterResource(R.drawable.ic_chat_24dp),
+                        contentDescription = stringResource(R.string.user_info_sheet_send_message),
+                        tint = Color(0xFFDBDEE1),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-                // Remove friend (in overflow menu)
+
+                // Friends badge pill indicator
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(Color(0xFF2B2D31))
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_check_24dp),
+                        contentDescription = null,
+                        tint = Color(0xFF23A55A),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Friends",
+                        color = Color(0xFFDBDEE1),
+                        fontSize = 13.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                }
             }
 
             "Outgoing" -> {

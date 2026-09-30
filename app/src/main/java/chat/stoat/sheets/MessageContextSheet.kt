@@ -386,25 +386,69 @@ fun MessageContextSheet(
         SheetButton(
             leadingContent = {
                 Icon(
-                    painter = painterResource(id = R.drawable.ic_visibility_off_24dp),
+                    painter = painterResource(id = R.drawable.ic_content_copy_24dp),
                     contentDescription = null
                 )
             },
             headlineContent = {
                 Text(
-                    text = stringResource(id = R.string.message_context_sheet_actions_mark_unread),
+                    text = stringResource(id = R.string.message_context_sheet_actions_copy),
                 )
             },
             onClick = {
-                Toast.makeText(
-                    context,
-                    resources.getString(R.string.comingsoon_toast),
-                    Toast.LENGTH_SHORT
-                ).show()
-
-                coroutineScope.launch {
-                    onHideSheet()
+                if (message.content.isNullOrEmpty()) {
+                    Toast.makeText(
+                        context,
+                        resources.getString(R.string.message_context_sheet_actions_copy_failed_empty),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@SheetButton
                 }
+
+                clipboardManager.setText(AnnotatedString(message.content!!))
+
+                if (Platform.needsShowClipboardNotification()) {
+                    Toast.makeText(
+                        context,
+                        resources.getString(R.string.copied),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+
+                coroutineScope.launch { onHideSheet() }
+            }
+        )
+
+        SheetButton(
+            leadingContent = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_link_24dp),
+                    contentDescription = null
+                )
+            },
+            headlineContent = {
+                Text(
+                    text = stringResource(id = R.string.message_context_sheet_actions_copy_link),
+                )
+            },
+            onClick = {
+                val serverId = StoatAPI.channelCache[message.channel]?.server
+                val messagePath = if (serverId != null) {
+                    "/server/$serverId/channel/${message.channel}/${message.id}"
+                } else {
+                    "/channel/${message.channel}/${message.id}"
+                }
+                clipboardManager.setText(AnnotatedString("$STOAT_WEB_APP$messagePath"))
+
+                if (Platform.needsShowClipboardNotification()) {
+                    Toast.makeText(
+                        context,
+                        resources.getString(R.string.message_context_sheet_actions_copy_link_copied),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+
+                coroutineScope.launch { onHideSheet() }
             }
         )
 

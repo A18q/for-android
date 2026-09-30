@@ -44,7 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -382,7 +386,23 @@ fun Message(
                         .fillMaxWidth()
                 ) {
                     if (message.tail == false) {
-                        Column {
+                        Column(
+                            modifier = Modifier.then(
+                                if (message.replies.isNullOrEmpty().not()) {
+                                    Modifier.drawBehind {
+                                        val strokeWidth = 2.dp.toPx()
+                                        val spineX = 20.dp.toPx()
+                                        drawLine(
+                                            color = Color(0xFF4E5058),
+                                            start = Offset(spineX, 0f),
+                                            end = Offset(spineX, 4.dp.toPx()),
+                                            strokeWidth = strokeWidth,
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+                                } else Modifier
+                            )
+                        ) {
                             Spacer(modifier = Modifier.height(4.dp))
                             UserAvatar(
                                 username = User.resolveDefaultName(author),

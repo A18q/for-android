@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import chat.stoat.R
+import chat.stoat.api.StoatAPI
 import chat.stoat.api.internals.FriendRequests
 import chat.stoat.api.internals.UserQR
 import chat.stoat.api.internals.UserQRContents
@@ -133,6 +134,12 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
     var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var addByTagSheetVisible by rememberSaveable { mutableStateOf(false) }
     var qrResult by rememberSaveable { mutableStateOf<QRResult?>(null) }
+
+    val incomingRequests = remember(StoatAPI.userCache.values) { FriendRequests.getIncoming() }
+    val outgoingRequests = remember(StoatAPI.userCache.values) { FriendRequests.getOutgoing() }
+    val onlineFriends = remember(StoatAPI.userCache.values) { FriendRequests.getOnlineFriends() }
+    val offlineFriends = remember(StoatAPI.userCache.values) { FriendRequests.getFriends(true) }
+    val blockedUsers = remember(StoatAPI.userCache.values) { FriendRequests.getBlocked() }
 
     val scanQrCodeLauncher = rememberLauncherForActivityResult(ScanQRCode()) { result ->
         qrResult = result
@@ -604,180 +611,194 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                 .padding(pv)
                 .fillMaxHeight()
         ) {
-            LazyColumn {
-                stickyHeader(key = "incoming") {
-                    CountableListHeader(
-                        text = stringResource(id = R.string.friends_incoming_requests),
-                        count = FriendRequests.getIncoming().size
-                    )
-                }
+            LazyColumn(state = listState) {
+                if (incomingRequests.isNotEmpty()) {
+                    stickyHeader(key = "incoming") {
+                        CountableListHeader(
+                            text = stringResource(id = R.string.friends_incoming_requests),
+                            count = incomingRequests.size
+                        )
+                    }
 
-                items(FriendRequests.getIncoming().size) {
-                    val item = FriendRequests.getIncoming().getOrNull(it)
-                    if (item == null) return@items
+                    items(
+                        count = incomingRequests.size,
+                        key = { incomingRequests[it].id ?: it }
+                    ) { index ->
+                        val item = incomingRequests[index]
+                        val isLast = index == incomingRequests.size - 1
 
-                    val isLast = it == FriendRequests.getIncoming().size - 1
-
-                    MemberListItem(
-                        member = null,
-                        user = item,
-                        serverId = null,
-                        userId = item.id ?: "",
-                        first = it == 0,
-                        last = isLast,
-                        onClick = {
-                            scope.launch {
-                                item.id?.let { userId ->
-                                    ActionChannel.send(Action.OpenUserSheet(userId, null))
+                        MemberListItem(
+                            member = null,
+                            user = item,
+                            serverId = null,
+                            userId = item.id ?: "",
+                            first = index == 0,
+                            last = isLast,
+                            onClick = {
+                                scope.launch {
+                                    item.id?.let { userId ->
+                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
 
-                    if (!isLast) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                        if (!isLast) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
                     }
                 }
 
-                stickyHeader(key = "outgoing") {
-                    CountableListHeader(
-                        text = stringResource(id = R.string.friends_outgoing_requests),
-                        count = FriendRequests.getOutgoing().size
-                    )
-                }
+                if (outgoingRequests.isNotEmpty()) {
+                    stickyHeader(key = "outgoing") {
+                        CountableListHeader(
+                            text = stringResource(id = R.string.friends_outgoing_requests),
+                            count = outgoingRequests.size
+                        )
+                    }
 
-                items(FriendRequests.getOutgoing().size) {
-                    val item = FriendRequests.getOutgoing().getOrNull(it)
-                    if (item == null) return@items
+                    items(
+                        count = outgoingRequests.size,
+                        key = { outgoingRequests[it].id ?: it }
+                    ) { index ->
+                        val item = outgoingRequests[index]
+                        val isLast = index == outgoingRequests.size - 1
 
-                    val isLast = it == FriendRequests.getOutgoing().size - 1
-
-                    MemberListItem(
-                        member = null,
-                        user = item,
-                        serverId = null,
-                        userId = item.id ?: "",
-                        first = it == 0,
-                        last = isLast,
-                        onClick = {
-                            scope.launch {
-                                item.id?.let { userId ->
-                                    ActionChannel.send(Action.OpenUserSheet(userId, null))
+                        MemberListItem(
+                            member = null,
+                            user = item,
+                            serverId = null,
+                            userId = item.id ?: "",
+                            first = index == 0,
+                            last = isLast,
+                            onClick = {
+                                scope.launch {
+                                    item.id?.let { userId ->
+                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
 
-                    if (!isLast) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                        if (!isLast) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
                     }
                 }
 
-                stickyHeader(key = "online") {
-                    CountableListHeader(
-                        text = stringResource(id = R.string.status_online),
-                        count = FriendRequests.getOnlineFriends().size
-                    )
-                }
+                if (onlineFriends.isNotEmpty()) {
+                    stickyHeader(key = "online") {
+                        CountableListHeader(
+                            text = stringResource(id = R.string.status_online),
+                            count = onlineFriends.size
+                        )
+                    }
 
-                items(FriendRequests.getOnlineFriends().size) {
-                    val item = FriendRequests.getOnlineFriends().getOrNull(it)
-                    if (item == null) return@items
+                    items(
+                        count = onlineFriends.size,
+                        key = { onlineFriends[it].id ?: it }
+                    ) { index ->
+                        val item = onlineFriends[index]
+                        val isLast = index == onlineFriends.size - 1
 
-                    val isLast = it == FriendRequests.getOnlineFriends().size - 1
-
-                    MemberListItem(
-                        member = null,
-                        user = item,
-                        serverId = null,
-                        userId = item.id ?: "",
-                        first = it == 0,
-                        last = isLast,
-                        onClick = {
-                            scope.launch {
-                                item.id?.let { userId ->
-                                    ActionChannel.send(Action.OpenUserSheet(userId, null))
+                        MemberListItem(
+                            member = null,
+                            user = item,
+                            serverId = null,
+                            userId = item.id ?: "",
+                            first = index == 0,
+                            last = isLast,
+                            onClick = {
+                                scope.launch {
+                                    item.id?.let { userId ->
+                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
 
-                    if (!isLast) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                        if (!isLast) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
                     }
                 }
 
-                stickyHeader(key = "not_online") {
-                    CountableListHeader(
-                        text = stringResource(id = R.string.friends_all),
-                        count = FriendRequests.getFriends(true).size
-                    )
-                }
+                if (offlineFriends.isNotEmpty()) {
+                    stickyHeader(key = "not_online") {
+                        CountableListHeader(
+                            text = stringResource(id = R.string.friends_all),
+                            count = offlineFriends.size
+                        )
+                    }
 
-                items(FriendRequests.getFriends(true).size) {
-                    val item = FriendRequests.getFriends(true).getOrNull(it)
-                    if (item == null) return@items
+                    items(
+                        count = offlineFriends.size,
+                        key = { offlineFriends[it].id ?: it }
+                    ) { index ->
+                        val item = offlineFriends[index]
+                        val isLast = index == offlineFriends.size - 1
 
-                    val isLast = it == FriendRequests.getFriends(true).size - 1
-
-                    MemberListItem(
-                        member = null,
-                        user = item,
-                        serverId = null,
-                        userId = item.id ?: "",
-                        first = it == 0,
-                        last = isLast,
-                        onClick = {
-                            scope.launch {
-                                item.id?.let { userId ->
-                                    ActionChannel.send(Action.OpenUserSheet(userId, null))
+                        MemberListItem(
+                            member = null,
+                            user = item,
+                            serverId = null,
+                            userId = item.id ?: "",
+                            first = index == 0,
+                            last = isLast,
+                            onClick = {
+                                scope.launch {
+                                    item.id?.let { userId ->
+                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
 
-                    if (!isLast) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                        if (!isLast) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
                     }
                 }
 
-                stickyHeader(key = "blocked") {
-                    CountableListHeader(
-                        text = stringResource(id = R.string.friends_blocked),
-                        count = FriendRequests.getBlocked().size
-                    )
-                }
+                if (blockedUsers.isNotEmpty()) {
+                    stickyHeader(key = "blocked") {
+                        CountableListHeader(
+                            text = stringResource(id = R.string.friends_blocked),
+                            count = blockedUsers.size
+                        )
+                    }
 
+                    items(
+                        count = blockedUsers.size,
+                        key = { blockedUsers[it].id ?: it }
+                    ) { index ->
+                        val item = blockedUsers[index]
+                        val isLast = index == blockedUsers.size - 1
 
-                items(FriendRequests.getBlocked().size) {
-                    val item = FriendRequests.getBlocked().getOrNull(it)
-                    if (item == null) return@items
-
-                    val isLast = it == FriendRequests.getBlocked().size - 1
-
-                    MemberListItem(
-                        member = null,
-                        user = item,
-                        serverId = null,
-                        userId = item.id ?: "",
-                        first = it == 0,
-                        last = isLast,
-                        onClick = {
-                            scope.launch {
-                                item.id?.let { userId ->
-                                    ActionChannel.send(Action.OpenUserSheet(userId, null))
+                        MemberListItem(
+                            member = null,
+                            user = item,
+                            serverId = null,
+                            userId = item.id ?: "",
+                            first = index == 0,
+                            last = isLast,
+                            onClick = {
+                                scope.launch {
+                                    item.id?.let { userId ->
+                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
 
-                    if (!isLast) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                        if (!isLast) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
                     }
                 }
             }

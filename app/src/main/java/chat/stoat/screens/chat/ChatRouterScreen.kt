@@ -662,6 +662,9 @@ fun ChatRouterScreen(
                 onReportServer = {
                     reportServerTarget = currentServer ?: ""
                     showReportServer = true
+                },
+                onNavigateToRoles = {
+                    topNav.navigate("settings/server/$serverContextSheetTarget/roles")
                 }
             )
         }
@@ -939,6 +942,7 @@ fun ChatRouterScreen(
                     }
                     ChannelNavigator(
                         dest = viewModel.currentDestination,
+                        setDestination = viewModel::setSaveDestination,
                         topNav = topNav,
                         messageJump = viewModel.pendingMessageJump,
                         onMessageJumpConsumed = viewModel::consumeMessageJump,
@@ -989,6 +993,7 @@ fun ChatRouterScreen(
                         Box(Modifier.fillMaxSize()) {
                             ChannelNavigator(
                                 dest = viewModel.currentDestination,
+                                setDestination = viewModel::setSaveDestination,
                                 topNav = topNav,
                                 messageJump = viewModel.pendingMessageJump,
                                 onMessageJumpConsumed = viewModel::consumeMessageJump,
@@ -1071,6 +1076,7 @@ fun Sidebar(
 @Composable
 fun ChannelNavigator(
     dest: ChatRouterDestination,
+    setDestination: (ChatRouterDestination) -> Unit,
     topNav: NavController,
     messageJump: ChannelMessageJump? = null,
     onMessageJumpConsumed: (ChannelMessageJump) -> Unit = {},
@@ -1096,6 +1102,7 @@ fun ChannelNavigator(
                     navController = topNav,
                     useDrawer = useDrawer,
                     onDrawerClicked = toggleDrawer,
+                    onDestinationChanged = setDestination
                 )
             }
 

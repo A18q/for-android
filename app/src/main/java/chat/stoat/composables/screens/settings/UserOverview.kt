@@ -3,13 +3,16 @@ package chat.stoat.composables.screens.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,6 +35,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.internals.SpecialUsers
@@ -94,114 +98,114 @@ fun RawUserOverview(
         }
     }
 
-    Box(
-        contentAlignment = Alignment.BottomStart,
+    val background = backgroundUrl ?: profile?.background
+    val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
+
+    Column(
         modifier = Modifier
-            .height(128.dp)
+            .fillMaxWidth()
             .padding(horizontal = if (internalPadding) 16.dp else 0.dp)
-            .clip(MaterialTheme.shapes.large)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .background(Color(0xFF2B2D31))
+            .border(1.dp, Color(0xFF3F4147).copy(alpha = 0.6f), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
             .then(
                 if (user.id in SpecialUsers.TEAM_MEMBER_FLAIRS.keys) {
-                    Modifier
-                        .border(
-                            width = 4.dp,
-                            brush = teamMemberFlair
-                                ?: Brush.solidColor(Color.Transparent),
-                            shape = MaterialTheme.shapes.large
-                        )
+                    Modifier.border(
+                        width = 4.dp,
+                        brush = teamMemberFlair ?: Brush.solidColor(Color.Transparent),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                    )
                 } else {
                     Modifier
                 }
             )
     ) {
-        val background = backgroundUrl ?: profile?.background
-        val contentColour = if (background != null) Color.White else LocalContentColor.current
-        val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
-
-        if (background != null) {
-            RemoteImage(
-                url = backgroundUrl
-                    ?: "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}",
-                description = null,
-                modifier = Modifier
-                    .height(128.dp)
-                    .fillMaxWidth(),
-                contentScale = ContentScale.FillWidth
-            )
-
-            Box(
-                modifier = Modifier
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.7f)
+        // Upper Banner Staging with Overlapping Avatar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(115.dp)
+        ) {
+            // Banner Background
+            if (background != null) {
+                RemoteImage(
+                    url = backgroundUrl
+                        ?: "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}",
+                    description = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFF5865F2).copy(alpha = 0.9f),
+                                    Color(0xFF2B2D31)
+                                )
                             )
                         )
-                    )
-                    .height(128.dp)
-                    .fillMaxWidth()
-            )
-        } else {
+                )
+            }
+
+            // Overlapping 70dp Avatar with 4dp cut-out border matching card background
             Box(
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .height(128.dp)
-                    .fillMaxWidth()
-            )
+                    .align(Alignment.BottomStart)
+                    .padding(start = 16.dp)
+            ) {
+                UserAvatar(
+                    username = user.displayName ?: stringResource(id = R.string.unknown),
+                    rawUrl = pfpUrl,
+                    userId = user.id ?: ULID.makeSpecial(0),
+                    avatar = user.avatar,
+                    size = 70.dp,
+                    presenceSize = 20.dp,
+                    presence = presenceFromStatus(user.status?.presence, user.online ?: false),
+                    modifier = Modifier
+                        .size(70.dp)
+                        .clip(CircleShape)
+                        .border(4.dp, Color(0xFF2B2D31), CircleShape)
+                )
+            }
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Lower Identity Block: Display Name, Username#Disc, Pronouns
+        Column(
             modifier = Modifier
-                .padding(16.dp)
                 .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            UserAvatar(
-                username = user.displayName ?: stringResource(id = R.string.unknown),
-                rawUrl = pfpUrl,
-                userId = user.id ?: ULID.makeSpecial(0),
-                avatar = user.avatar,
-                size = 48.dp,
-                presence = presenceFromStatus(user.status?.presence, user.online ?: false)
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
+            val displayName = user.displayName?.takeIf { it.isNotBlank() } ?: user.username ?: stringResource(id = R.string.unknown)
             Text(
-                text = AnnotatedString.Builder().apply {
-                    // make sure
-                    // - the display name is not null or blank
-                    // - the display name is not the same as the username; both trimmed
-                    if (!user.displayName.isNullOrBlank() && user.displayName!!.trim() != user.username?.trim()) {
-                        pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                        append(user.displayName)
-                        pop()
-                        append("\n")
-                    }
-                    append("${user.username}")
-                    pushStyle(SpanStyle(fontWeight = FontWeight.ExtraLight))
-                    append("#${user.discriminator}")
-                    pop()
-                }.toAnnotatedString(),
-                color = contentColour,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                text = displayName,
+                color = Color(0xFFF2F3F5),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
-            pronouns?.let {
-                Spacer(modifier = Modifier.width(8.dp))
+            val handle = user.username?.let {
+                val disc = user.discriminator?.takeIf { d -> d.isNotEmpty() }?.let { d -> "#$d" } ?: ""
+                "@$it$disc"
+            } ?: ""
+            val subtitle = if (pronouns != null && handle.isNotEmpty()) "$handle • $pronouns" else handle.ifEmpty { pronouns ?: "" }
 
+            if (subtitle.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = it,
-                    color = contentColour,
-                    style = MaterialTheme.typography.labelMedium,
+                    text = subtitle,
+                    color = Color(0xFF949BA4),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .align(Alignment.Bottom)
-                        .widthIn(max = 140.dp)
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

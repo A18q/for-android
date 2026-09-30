@@ -17,7 +17,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -75,13 +80,36 @@ fun InReplyTo(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onMessageClick(messageId) }
+            .drawBehind {
+                val strokeWidth = 2.dp.toPx()
+                val cornerRadius = 8.dp.toPx()
+                val spineX = 30.dp.toPx()
+                val targetX = 52.dp.toPx()
+                val centerY = size.height / 2
+
+                val path = Path().apply {
+                    moveTo(spineX, size.height)
+                    lineTo(spineX, centerY + cornerRadius)
+                    quadraticTo(spineX, centerY, spineX + cornerRadius, centerY)
+                    lineTo(targetX, centerY)
+                }
+
+                drawPath(
+                    path = path,
+                    color = Color(0xFF4E5058),
+                    style = Stroke(
+                        width = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                )
+            }
     ) {
         Row(
-            modifier = Modifier.padding(4.dp),
+            modifier = Modifier
+                .padding(vertical = 2.dp)
+                .padding(start = 56.dp, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(modifier = Modifier.width(40.dp))
-
             if (message != null) {
                 UserAvatar(
                     username = username,
