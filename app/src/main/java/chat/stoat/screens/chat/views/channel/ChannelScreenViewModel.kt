@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.util.fastDistinctBy
 import androidx.lifecycle.ViewModel
@@ -1168,12 +1169,8 @@ class ChannelScreenViewModel(
 
     private suspend fun updateItems(newItems: List<ChannelScreenItem>) {
         // Spec https://wiki.rvlt.gg/index.php/Text_Channel_(UI)#Message_Grouping_Algorithm
-        val innerItems = normalizeByUlid(newItems) { it.messageIdOrNull() }.toMutableStateList()
-        // Let L be the list of messages ordered from newest to oldest
-        val allItemsThatAreMessages =
-            innerItems.filterIsInstance<ChannelScreenItem.RegularMessage>()
-        // Let E be the list of elements to be rendered
-        val allItems = innerItems
+        val allItems = normalizeByUlid(newItems) { it.messageIdOrNull() }
+        val zoneId = ZoneId.systemDefault()
 
         val groupedItems = mutableListOf<ChannelScreenItem>()
 
@@ -1218,9 +1215,9 @@ class ChannelScreenViewModel(
                 if (adate != null && bdate != null) {
                     // If adate and bdate are not the same day:
                     val adateLocal =
-                        adate.toJavaInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+                        adate.toJavaInstant().atZone(zoneId).toLocalDate()
                     val bdateLocal =
-                        bdate.toJavaInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+                        bdate.toJavaInstant().atZone(zoneId).toLocalDate()
                     if (!adateLocal.isEqual(bdateLocal)) {
                         // Let date be adate
                         date = adate
@@ -1284,16 +1281,20 @@ class ChannelScreenViewModel(
             }
         }
 
+        val distinctItems = groupedItems.fastDistinctBy {
+            when (it) {
+                is ChannelScreenItem.RegularMessage -> it.message.id
+                is ChannelScreenItem.SystemMessage -> it.message.id
+                is ChannelScreenItem.DateDivider -> it.instant.toString()
+                else -> it.toString() // Fallback for other item types
+            }
+        }
+
         withContext(Dispatchers.Main) {
-            items.clear()
-            items.addAll(groupedItems.fastDistinctBy {
-                when (it) {
-                    is ChannelScreenItem.RegularMessage -> it.message.id
-                    is ChannelScreenItem.SystemMessage -> it.message.id
-                    is ChannelScreenItem.DateDivider -> it.instant.toString()
-                    else -> it.toString() // Fallback for other item types
-                }
-            })
+            Snapshot.withMutableSnapshot {
+                items.clear()
+                items.addAll(distinctItems)
+            }
         }
     }
 

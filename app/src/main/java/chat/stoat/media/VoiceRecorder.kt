@@ -90,30 +90,57 @@ interface VoiceRecorder {
  * Reduce recorder amplitude readings to a normalised waveform.
  */
 internal fun buildWaveform(
-    amplitudes: List<Int>,
+    amplitudes: IntArray,
+    size: Int = amplitudes.size,
     sampleCount: Int = VoiceRecorder.WAVEFORM_SAMPLE_COUNT,
 ): List<Int> {
     require(sampleCount > 0) { "sampleCount must be positive" }
 
-    if (amplitudes.isEmpty()) return List(sampleCount) { 0 }
+    if (size == 0) return List(sampleCount) { 0 }
 
-    val peaks = List(sampleCount) { index ->
-        val start = index * amplitudes.size / sampleCount
-        val end = ceil((index + 1) * amplitudes.size.toDouble() / sampleCount)
+    val peaks = IntArray(sampleCount)
+    var maximum = 0
+
+    for (index in 0 until sampleCount) {
+        val start = index * size / sampleCount
+        val end = ceil((index + 1) * size.toDouble() / sampleCount)
             .toInt()
             .coerceAtLeast(start + 1)
-            .coerceAtMost(amplitudes.size)
-        amplitudes.subList(start.coerceAtMost(amplitudes.lastIndex), end)
-            .maxOrNull()
-            ?.coerceAtLeast(0)
-            ?: 0
+            .coerceAtMost(size)
+        var peak = 0
+        val startIdx = start.coerceAtMost(size - 1)
+        for (i in startIdx until end) {
+            val sample = amplitudes[i]
+            if (sample > peak) {
+                peak = sample
+            }
+        }
+        peaks[index] = peak
+        if (peak > maximum) {
+            maximum = peak
+        }
     }
-    val maximum = peaks.maxOrNull()?.takeIf { it > 0 } ?: return List(sampleCount) { 0 }
+    val maxDouble = maximum.toDouble()
+    if (maximum <= 0) return List(sampleCount) { 0 }
 
-    return peaks.map { amplitude ->
-        // Square-root scaling, to avoid a peak flattening the whole waveform
-        (sqrt(amplitude.toDouble() / maximum) * UByte.MAX_VALUE.toInt())
+    val result = ArrayList<Int>(sampleCount)
+    for (index in 0 until sampleCount) {
+        val scaled = (sqrt(peaks[index].toDouble() / maxDouble) * UByte.MAX_VALUE.toInt())
             .roundToInt()
             .coerceIn(0, UByte.MAX_VALUE.toInt())
+        result.add(scaled)
     }
+    return result
+}
+
+internal fun buildWaveform(
+    amplitudes: List<Int>,
+    sampleCount: Int = VoiceRecorder.WAVEFORM_SAMPLE_COUNT,
+): List<Int> {
+    if (amplitudes.isEmpty()) return List(sampleCount) { 0 }
+    val array = IntArray(amplitudes.size)
+    for (i in amplitudes.indices) {
+        array[i] = amplitudes[i]
+    }
+    return buildWaveform(array, array.size, sampleCount)
 }

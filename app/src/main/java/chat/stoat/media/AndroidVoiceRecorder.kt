@@ -24,7 +24,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
-import kotlin.time.Duration.Companion.milliseconds
 
 private data class AndroidVoiceRecorderFormatSpec(
     val outputFormat: Int,
@@ -38,7 +37,9 @@ private data class AndroidVoiceRecorderFormatSpec(
 
 class AndroidVoiceRecorder(private val context: Context) : VoiceRecorder {
     private val samplingScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val amplitudeSamples = mutableListOf<Int>()
+    private var amplitudeSamples = IntArray(INITIAL_AMPLITUDE_CAPACITY)
+    private var amplitudeCount = 0
+    private var maxRecordedAmplitude = 0
     private val amplitudeSamplesLock = Any()
 
     private var recorder: MediaRecorder? = null
@@ -85,18 +86,25 @@ class AndroidVoiceRecorder(private val context: Context) : VoiceRecorder {
             this.format = format
             startedAtMillis = SystemClock.elapsedRealtime()
             synchronized(amplitudeSamplesLock) {
-                amplitudeSamples.clear()
+                amplitudeCount = 0
+                maxRecordedAmplitude = 0
             }
             amplitudeSamplingJob = samplingScope.launch {
                 while (isActive) {
-                    delay(AMPLITUDE_SAMPLE_INTERVAL_MILLIS.milliseconds)
+                    delay(AMPLITUDE_SAMPLE_INTERVAL_MILLIS)
                     val amplitude = try {
                         mediaRecorder.maxAmplitude
                     } catch (_: IllegalStateException) {
                         break
                     }
                     synchronized(amplitudeSamplesLock) {
-                        amplitudeSamples.add(amplitude)
+                        if (amplitudeCount == amplitudeSamples.size) {
+                            amplitudeSamples = amplitudeSamples.copyOf(amplitudeSamples.size * 2)
+                        }
+                        amplitudeSamples[amplitudeCount++] = amplitude
+                        if (amplitude > maxRecordedAmplitude) {
+                            maxRecordedAmplitude = amplitude
+                        }
                     }
                 }
             }
@@ -153,8 +161,8 @@ class AndroidVoiceRecorder(private val context: Context) : VoiceRecorder {
             }
 
             val durationMillis = readDurationMillis(finalizedFile) ?: elapsedDuration
-            val amplitudes = synchronized(amplitudeSamplesLock) {
-                amplitudeSamples.toList()
+            val (samplesSnapshot, countSnapshot, maxAmp) = synchronized(amplitudeSamplesLock) {
+                Triple(amplitudeSamples.copyOf(amplitudeCount), amplitudeCount, maxRecordedAmplitude)
             }
 
             return Recording(
@@ -162,8 +170,8 @@ class AndroidVoiceRecorder(private val context: Context) : VoiceRecorder {
                 mimeType = format.mimeType,
                 fileExtension = format.fileExtension,
                 durationMillis = durationMillis,
-                waveform = buildWaveform(amplitudes),
-                isSilent = (amplitudes.maxOrNull() ?: 0) < VoiceRecorder.SILENCE_AMPLITUDE_THRESHOLD,
+                waveform = buildWaveform(samplesSnapshot, countSnapshot),
+                isSilent = maxAmp < VoiceRecorder.SILENCE_AMPLITUDE_THRESHOLD,
             )
         } finally {
             file.delete()
@@ -172,7 +180,8 @@ class AndroidVoiceRecorder(private val context: Context) : VoiceRecorder {
             this.format = null
             startedAtMillis = 0L
             synchronized(amplitudeSamplesLock) {
-                amplitudeSamples.clear()
+                amplitudeCount = 0
+                maxRecordedAmplitude = 0
             }
         }
     }
@@ -255,7 +264,7 @@ class AndroidVoiceRecorder(private val context: Context) : VoiceRecorder {
             FileOutputStream(outputFile).channel.use { outputChannel ->
                 OggMuxer.Builder(outputChannel).build().use { muxer ->
                     val outputTrack = muxer.addTrack(outputFormat)
-                    val sampleBuffer = ByteBuffer.allocate(MAX_OPUS_PACKET_SIZE_BYTES)
+                    val sampleBuffer = ByteBuffer.allocateDirect(MAX_OPUS_PACKET_SIZE_BYTES)
 
                     while (true) {
                         sampleBuffer.clear()
@@ -291,6 +300,7 @@ class AndroidVoiceRecorder(private val context: Context) : VoiceRecorder {
 
     private companion object {
         const val AMPLITUDE_SAMPLE_INTERVAL_MILLIS = 50L
+        const val INITIAL_AMPLITUDE_CAPACITY = 1_200
         const val MAX_OPUS_PACKET_SIZE_BYTES = 64 * 1024
     }
 }

@@ -37,11 +37,18 @@ internal fun ChannelScreenItem.messageIdOrNull(): String? = when (this) {
 internal fun <T> normalizeByUlid(
     values: Iterable<T>,
     idOf: (T) -> String?,
-): List<T> = values
-    .mapNotNull { value -> idOf(value)?.let { id -> id to value } }
-    .distinctBy { (id) -> id }
-    .sortedByDescending { (id) -> id }
-    .map { (_, value) -> value }
+): List<T> {
+    val seen = HashSet<String>()
+    val result = ArrayList<T>()
+    for (value in values) {
+        val id = idOf(value) ?: continue
+        if (seen.add(id)) {
+            result.add(value)
+        }
+    }
+    result.sortByDescending { idOf(it) ?: "" }
+    return result
+}
 
 internal fun calculateNearbyBoundaries(
     messageIds: Iterable<String>,

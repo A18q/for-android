@@ -146,8 +146,10 @@ fun ChannelSideDrawer(
     modifier: Modifier = Modifier
 ) {
     val server = StoatAPI.serverCache[currentServer]
-    val categorisedChannels = server?.let {
-        ChannelUtils.categoriseServerFlat(it)
+    val categorisedChannels = remember(server, StoatAPI.channelCache.values) {
+        server?.let {
+            ChannelUtils.categoriseServerFlat(it)
+        }
     }
     val channelListState = rememberLazyListState()
 
@@ -195,11 +197,17 @@ fun ChannelSideDrawer(
         )
     )
 
-    val sidebarEntries = resolveServerSidebar(
-        servers = StoatAPI.serverCache.filterValues { it.id != null },
-        ordering = SyncedSettings.ordering,
-        folders = SyncedSettings.serverFolders.folders,
-    )
+    val sidebarEntries = remember(
+        StoatAPI.serverCache.values,
+        SyncedSettings.ordering,
+        SyncedSettings.serverFolders.folders
+    ) {
+        resolveServerSidebar(
+            servers = StoatAPI.serverCache.filterValues { it.id != null },
+            ordering = SyncedSettings.ordering,
+            folders = SyncedSettings.serverFolders.folders,
+        )
+    }
 
     val railRows = remember(sidebarEntries) { sidebarEntries.toRailRows() }
     val railListState = rememberLazyListState()
@@ -209,15 +217,18 @@ fun ChannelSideDrawer(
     val folderGroupLayout = remember { FolderGroupLayout() }
     val railOverscroll = rememberOverscrollEffect()
     val defaultFolderGroupColour = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-    val folderGroupStyles = sidebarEntries
-        .filterIsInstance<ServerSidebarEntry.Folder>()
-        .associate { entry ->
-            entry.id to FolderGroupStyle(
-                colour = entry.folder.colour?.let(::parseFolderColour)?.copy(alpha = 0.18f)
-                    ?: defaultFolderGroupColour,
-                lastMemberKey = entry.servers.last().id!!
-            )
-        }
+    val folderGroupStyles = remember(sidebarEntries, defaultFolderGroupColour) {
+        sidebarEntries
+            .filterIsInstance<ServerSidebarEntry.Folder>()
+            .associate { entry ->
+                entry.id to FolderGroupStyle(
+                    colour = entry.folder.colour?.let(::parseFolderColour)?.copy(alpha = 0.18f)
+                        ?: defaultFolderGroupColour,
+                    lastMemberKey = entry.servers.last().id!!
+                )
+            }
+    }
+    val unreadDMs by remember { derivedStateOf { DirectMessages.unreadDMs() } }
     val newFolderName = stringResource(R.string.server_folder_default_name)
 
     val scope = rememberCoroutineScope()
@@ -415,10 +426,9 @@ fun ChannelSideDrawer(
                 }
 
                 items(
-                    DirectMessages.unreadDMs().size,
-                    key = { DirectMessages.unreadDMs()[it].id ?: it }
-                ) {
-                    val dm = DirectMessages.unreadDMs()[it]
+                    items = unreadDMs,
+                    key = { it.id ?: it.hashCode() }
+                ) { dm ->
                     when (dm.channelType) {
                         ChannelType.Group -> GroupIcon(
                             name = dm.name ?: "?",
@@ -858,10 +868,9 @@ fun ColumnScope.DirectMessagesChannelListRenderer(
         }
 
         items(
-            dmAbleChannels.size,
-            key = { dmAbleChannels[it].id ?: it }
-        ) {
-            val channel = dmAbleChannels.getOrNull(it) ?: return@items
+            items = dmAbleChannels,
+            key = { it.id ?: it.hashCode() }
+        ) { channel ->
 
             val partner =
                 if (channel.channelType == ChannelType.DirectMessage) {
@@ -956,8 +965,17 @@ fun ColumnScope.ServerChannelListRenderer(
             }
         }
 
-        items(categorisedChannels?.size ?: 0) {
-            when (val channelOrCat = categorisedChannels?.get(it)) {
+        items(
+            items = categorisedChannels.orEmpty(),
+            key = { item ->
+                when (item) {
+                    is CategorisedChannelList.Channel -> item.channel.id ?: item.hashCode().toString()
+                    is CategorisedChannelList.Category -> item.category.id ?: item.hashCode().toString()
+                    else -> item.hashCode().toString()
+                }
+            }
+        ) { channelOrCat ->
+            when (channelOrCat) {
                 is CategorisedChannelList.Channel -> {
                     ChannelItem(
                         channel = channelOrCat.channel,
@@ -993,8 +1011,6 @@ fun ColumnScope.ServerChannelListRenderer(
                 is CategorisedChannelList.Category -> {
                     CategoryItem(category = channelOrCat.category)
                 }
-
-                else -> {}
             }
         }
         item(key = "last") {

@@ -4,7 +4,13 @@ import kotlin.experimental.and
 import kotlin.random.Random
 
 fun String.isUlid(): Boolean {
-    return "[0-9A-HJKMNP-TV-Z]{26}".toRegex().matches(this)
+    if (this.length != 26) return false
+    for (i in 0 until 26) {
+        val c = this[i]
+        val isValid = (c in '0'..'9') || (c in 'A'..'H') || (c in 'J'..'K') || (c in 'M'..'N') || (c in 'P'..'T') || (c in 'V'..'Z')
+        if (!isValid) return false
+    }
+    return true
 }
 
 object ULID {

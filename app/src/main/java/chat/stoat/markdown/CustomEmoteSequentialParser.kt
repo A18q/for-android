@@ -1,10 +1,20 @@
 package chat.stoat.markdown
 
-import chat.stoat.api.internals.isUlid
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.parser.sequentialparsers.RangesListBuilder
 import org.intellij.markdown.parser.sequentialparsers.SequentialParser
 import org.intellij.markdown.parser.sequentialparsers.TokensCache
+
+internal fun CharSequence.isUlidAt(start: Int, length: Int): Boolean {
+    if (length != 26 || start < 0 || start + 26 > this.length) return false
+    for (i in start until start + 26) {
+        val c = this[i]
+        if (!((c in '0'..'9') || (c in 'A'..'H') || (c in 'J'..'K') || (c in 'M'..'N') || (c in 'P'..'T') || (c in 'V'..'Z'))) {
+            return false
+        }
+    }
+    return true
+}
 
 class CustomEmoteSequentialParser(private val content: String) : SequentialParser {
 
@@ -32,8 +42,7 @@ class CustomEmoteSequentialParser(private val content: String) : SequentialParse
                 }
 
                 if (lookahead.type == MarkdownTokenTypes.COLON) {
-                    val innerText = content.substring(openEnd, lookahead.start)
-                    if (innerText.isUlid()) {
+                    if (content.isUlidAt(openEnd, lookahead.start - openEnd)) {
                         result.withNode(
                             SequentialParser.Node(
                                 iterator.index..lookahead.index + 1,

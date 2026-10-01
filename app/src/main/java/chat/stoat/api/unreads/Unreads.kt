@@ -18,20 +18,19 @@ class Unreads {
 
     suspend fun sync() {
         channels.clear()
-        channels.putAll(
-            try {
-                syncUnreads().associate {
-                    it.id.channel to ChannelUnread(
-                        id = it.id.channel,
-                        last_id = it.last_id,
-                        mentions = it.mentions
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e("Unreads", "Failed to sync unreads", e)
-                emptyMap()
+        try {
+            val unreadList = syncUnreads()
+            for (i in unreadList.indices) {
+                val item = unreadList[i]
+                channels[item.id.channel] = ChannelUnread(
+                    id = item.id.channel,
+                    last_id = item.last_id,
+                    mentions = item.mentions
+                )
             }
-        )
+        } catch (e: Exception) {
+            Log.e("Unreads", "Failed to sync unreads", e)
+        }
         hasLoaded.value = true
     }
 
@@ -64,8 +63,9 @@ class Unreads {
 
     suspend fun markAsRead(channelId: String, messageId: String, sync: Boolean = true) {
         if (!hasLoaded.value) return
-        channels[channelId]?.let {
-            channels[channelId] = it.copy(last_id = messageId)
+        val current = channels[channelId]
+        if (current != null) {
+            channels[channelId] = current.copy(last_id = messageId)
         }
         if (sync) {
             ackChannel(channelId, messageId)
@@ -73,8 +73,9 @@ class Unreads {
     }
 
     fun processExternalAck(channelId: String, messageId: String) {
-        channels[channelId]?.let {
-            channels[channelId] = it.copy(last_id = messageId)
+        val current = channels[channelId]
+        if (current != null) {
+            channels[channelId] = current.copy(last_id = messageId)
         }
     }
 
@@ -110,10 +111,10 @@ class Unreads {
     fun hasAnyUnreads(): Boolean {
         if (!hasLoaded.value) return false
 
-        for ((channelId, unread) in StoatAPI.channelCache) {
-            if (channelId !in channels) continue
-            if (NotificationSettingsProvider.isChannelMuted(channelId, unread.server)) continue
-            if (hasUnread(channelId, unread.lastMessageID ?: "", unread.server)) {
+        for ((channelId, _) in channels) {
+            val channel = StoatAPI.channelCache[channelId] ?: continue
+            if (NotificationSettingsProvider.isChannelMuted(channelId, channel.server)) continue
+            if (hasUnread(channelId, channel.lastMessageID ?: "", channel.server)) {
                 return true
             }
         }
@@ -128,10 +129,10 @@ class Unreads {
         if (!hasLoaded.value) return null
 
         var count = 0
-        for ((channelId, unread) in StoatAPI.channelCache) {
-            if (channelId !in channels) continue
-            if (NotificationSettingsProvider.isChannelMuted(channelId, unread.server)) continue
-            if (hasUnread(channelId, unread.lastMessageID ?: "", unread.server)) {
+        for ((channelId, _) in channels) {
+            val channel = StoatAPI.channelCache[channelId] ?: continue
+            if (NotificationSettingsProvider.isChannelMuted(channelId, channel.server)) continue
+            if (hasUnread(channelId, channel.lastMessageID ?: "", channel.server)) {
                 count++
             }
         }

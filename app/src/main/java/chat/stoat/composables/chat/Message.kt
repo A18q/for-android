@@ -297,15 +297,13 @@ fun Message(
 
     val authorIsBlocked = remember(author) { author.relationship == "Blocked" }
 
-    var mentionsSelfRole by remember(message) { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    val mentionsSelfRole = remember(message.channel, message.content) {
         val serverId =
-            StoatAPI.channelCache[message.channel]?.server ?: return@LaunchedEffect
-        var selfMember = StoatAPI.selfId?.let { StoatAPI.members.getMember(serverId, it) }
-            ?: return@LaunchedEffect
-        var messageRoleMentions = MessageProcessor.findMentionedRoleIDs(message.content)
-
-        mentionsSelfRole = selfMember.roles?.any { it in messageRoleMentions } == true
+            StoatAPI.channelCache[message.channel]?.server ?: return@remember false
+        val selfMember = StoatAPI.selfId?.let { StoatAPI.members.getMember(serverId, it) }
+            ?: return@remember false
+        val messageRoleMentions = MessageProcessor.findMentionedRoleIDs(message.content)
+        selfMember.roles?.any { it in messageRoleMentions } == true
     }
 
     Column(modifier.animateContentSize()) {
@@ -656,7 +654,7 @@ fun Message(
                             }
                         }
 
-                        val reactionsAndInteractions = remember(message.reactions) {
+                        val reactionsAndInteractions = remember(message.reactions, message.interactions) {
                             message.reactions.orEmpty().toMutableMap().also {
                                 message.interactions?.reactions?.forEach { reaction ->
                                     if (!it.containsKey(reaction)) {
@@ -673,33 +671,35 @@ fun Message(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 reactionsAndInteractions.forEach { reaction ->
-                                    Reaction(
-                                        reaction.key, reaction.value,
-                                        onClick = { hasOwn ->
-                                            scope.launch {
-                                                if (hasOwn) {
-                                                    unreact(
-                                                        message.channel!!,
-                                                        message.id!!,
-                                                        reaction.key
-                                                    )
-                                                } else {
-                                                    react(
-                                                        message.channel!!,
-                                                        message.id!!,
-                                                        reaction.key
-                                                    )
+                                    key(reaction.key) {
+                                        Reaction(
+                                            reaction.key, reaction.value,
+                                            onClick = { hasOwn ->
+                                                scope.launch {
+                                                    if (hasOwn) {
+                                                        unreact(
+                                                            message.channel!!,
+                                                            message.id!!,
+                                                            reaction.key
+                                                        )
+                                                    } else {
+                                                        react(
+                                                            message.channel!!,
+                                                            message.id!!,
+                                                            reaction.key
+                                                        )
+                                                    }
                                                 }
                                             }
-                                        }
-                                    ) {
-                                        scope.launch {
-                                            ActionChannel.send(
-                                                Action.MessageReactionInfo(
-                                                    message.id!!,
-                                                    reaction.key
+                                        ) {
+                                            scope.launch {
+                                                ActionChannel.send(
+                                                    Action.MessageReactionInfo(
+                                                        message.id!!,
+                                                        reaction.key
+                                                    )
                                                 )
-                                            )
+                                            }
                                         }
                                     }
                                 }

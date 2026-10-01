@@ -18,53 +18,55 @@ object MessageProcessor {
      * 2. Replaces :emoji-shortcode: with the emoji's unicode character, if it exists
      */
     fun processOutgoing(content: String, serverId: String?): String {
-        val mentions = MentionRegex.findAll(content).map { it.value }.toList()
-
-        var returnable = mentions.fold(content) { acc, mention ->
-            val (username, discriminator) = MentionRegex.matchEntire(mention)?.destructured
-                ?: return@fold acc
-
-            val user =
-                StoatAPI.userCache.values.find { it.username == username && it.discriminator == discriminator }
-
-            val userId = user?.id ?: return@fold acc
-            acc.replace(mention, "<@$userId>")
+        var returnable = if (content.contains('@')) {
+            MentionRegex.replace(content) { match ->
+                val (username, discriminator) = match.destructured
+                val user =
+                    StoatAPI.userCache.values.find { it.username == username && it.discriminator == discriminator }
+                val userId = user?.id
+                if (userId != null) "<@$userId>" else match.value
+            }
+        } else {
+            content
         }
 
-        val channels = ChannelRegex.findAll(returnable).map { it.value }.toList()
+        if (returnable.contains('#')) {
+            val channels = ChannelRegex.findAll(returnable)
+            for (match in channels) {
+                val channelName = match.groups[1]?.value ?: continue
+                val fetchedChannel =
+                    StoatAPI.channelCache.values.find {
+                        it.name == channelName && it.server == serverId && it.channelType == ChannelType.TextChannel
+                    } ?: continue
 
-        returnable = channels.fold(returnable) { acc, channel ->
-            val channelName = ChannelRegex.matchEntire(channel)?.destructured?.component1()
-                ?: return@fold acc
-
-            val fetchedChannel =
-                StoatAPI.channelCache.values.find {
-                    it.name == channelName && it.server == serverId && it.channelType == ChannelType.TextChannel
+                fetchedChannel.name?.let {
+                    returnable = returnable.replace("#$it", "<#${fetchedChannel.id}>")
                 }
-                    ?: return@fold acc
-
-            fetchedChannel.name?.let { acc.replace("#${it}", "<#${fetchedChannel.id}>") } ?: acc
+            }
         }
 
-        val emojis = EmoteRegex.findAll(returnable).map { it.value }.toList()
-
-        returnable = emojis.fold(returnable) { acc, emoji ->
-            val emojiName = EmoteRegex.matchEntire(emoji)?.destructured?.component1()
-                ?: return@fold acc
-
-            val byShortcode = MessageProcessor.emoji.unicodeByShortcode(emojiName)
-                ?: return@fold acc
-
-            acc.replace(":$emojiName:", byShortcode)
+        if (returnable.contains(':')) {
+            returnable = EmoteRegex.replace(returnable) { match ->
+                val emojiName = match.groupValues[1]
+                val byShortcode = emoji.unicodeByShortcode(emojiName)
+                byShortcode ?: match.value
+            }
         }
 
         return returnable
     }
 
-    private val roleRegex = "<%([0-9A-HJKMNP-TV-Z]{26})>".toRegex()
+    private val roleRegex = Regex("<%([0-9A-HJKMNP-TV-Z]{26})>")
     fun findMentionedRoleIDs(content: String?): List<String> {
-        if (content.isNullOrEmpty()) return emptyList()
-        return roleRegex.findAll(content).map { it.groupValues[1] }.toList().distinct()
-            .filter { it.isNotEmpty() }
+        if (content.isNullOrEmpty() || !content.contains("<%")) return emptyList()
+        val matches = roleRegex.findAll(content)
+        val result = ArrayList<String>(2)
+        for (match in matches) {
+            val roleId = match.groupValues[1]
+            if (roleId.isNotEmpty() && !result.contains(roleId)) {
+                result.add(roleId)
+            }
+        }
+        return result
     }
 }

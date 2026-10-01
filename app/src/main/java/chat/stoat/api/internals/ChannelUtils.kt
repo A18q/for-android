@@ -35,32 +35,32 @@ object ChannelUtils {
 
     fun categoriseServerFlat(server: Server): List<CategorisedChannelList> {
         val output = mutableListOf<CategorisedChannelList>()
+        val categories = server.categories
 
-        val uncategorised =
-            server.channels?.filter { c ->
-                server.categories?.none { cat ->
-                    cat.channels?.contains(
-                        c
-                    ) == true
-                } ?: true
+        val categorizedChannelIds = HashSet<String>()
+        if (categories != null) {
+            for (cat in categories) {
+                cat.channels?.let { categorizedChannelIds.addAll(it) }
             }
-                ?.mapNotNull {
-                    StoatAPI.channelCache[it]?.let { it1 ->
-                        CategorisedChannelList.Channel(it1)
-                    }
-                } ?: emptyList()
-        output.addAll(uncategorised)
+        }
 
-        val categories =
-            server.categories?.map { CategorisedChannelList.Category(it) } ?: emptyList()
-        categories.forEach {
-            output.add(it)
-            val channels = it.category.channels?.mapNotNull { c ->
-                StoatAPI.channelCache[c]?.let { it1 ->
-                    CategorisedChannelList.Channel(it1)
+        server.channels?.forEach { c ->
+            if (c !in categorizedChannelIds) {
+                StoatAPI.channelCache[c]?.let {
+                    output.add(CategorisedChannelList.Channel(it))
                 }
-            } ?: emptyList()
-            output.addAll(channels)
+            }
+        }
+
+        if (categories != null) {
+            for (cat in categories) {
+                output.add(CategorisedChannelList.Category(cat))
+                cat.channels?.forEach { c ->
+                    StoatAPI.channelCache[c]?.let {
+                        output.add(CategorisedChannelList.Channel(it))
+                    }
+                }
+            }
         }
 
         return output

@@ -1,6 +1,5 @@
 package chat.stoat.markdown
 
-import chat.stoat.api.internals.isUlid
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.parser.sequentialparsers.RangesListBuilder
 import org.intellij.markdown.parser.sequentialparsers.SequentialParser
@@ -28,25 +27,26 @@ class MentionSequentialParser(private val content: String) : SequentialParser {
                 }
 
                 if (lookahead.type == MarkdownTokenTypes.GT) {
-                    val innerText = content.substring(ltEnd, lookahead.start)
+                    val innerLen = lookahead.start - ltEnd
 
                     when {
-                        innerText.length == 27 && innerText[0] == '@' && innerText.substring(1).isUlid() -> {
+                        innerLen == 27 && content[ltEnd] == '@' && content.isUlidAt(ltEnd + 1, 26) -> {
                             result.withNode(SequentialParser.Node(iterator.index..lookahead.index + 1, USER_MENTION_ELEMENT_TYPE))
                             iterator = lookahead.advance()
                             continue
                         }
-                        innerText.length == 27 && innerText[0] == '#' && innerText.substring(1).isUlid() -> {
+                        innerLen == 27 && content[ltEnd] == '#' && content.isUlidAt(ltEnd + 1, 26) -> {
                             result.withNode(SequentialParser.Node(iterator.index..lookahead.index + 1, CHANNEL_MENTION_ELEMENT_TYPE))
                             iterator = lookahead.advance()
                             continue
                         }
-                        innerText.length == 27 && innerText[0] == '%' && innerText.substring(1).isUlid() -> {
+                        innerLen == 27 && content[ltEnd] == '%' && content.isUlidAt(ltEnd + 1, 26) -> {
                             result.withNode(SequentialParser.Node(iterator.index..lookahead.index + 1, ROLE_MENTION_ELEMENT_TYPE))
                             iterator = lookahead.advance()
                             continue
                         }
-                        innerText == "@EVERYONE" || innerText == "@ONLINE" -> {
+                        (innerLen == 9 && content.regionMatches(ltEnd, "@EVERYONE", 0, 9, ignoreCase = false)) ||
+                        (innerLen == 7 && content.regionMatches(ltEnd, "@ONLINE", 0, 7, ignoreCase = false)) -> {
                             result.withNode(SequentialParser.Node(iterator.index..lookahead.index + 1, MASS_MENTION_ELEMENT_TYPE))
                             iterator = lookahead.advance()
                             continue

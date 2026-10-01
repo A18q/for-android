@@ -40,25 +40,55 @@ class SpoilerLexer(
     }
 
     override fun advance(): IElementType? {
-        while (pending.isEmpty()) {
+        if (!pending.isEmpty()) {
+            val token = pending.removeFirst()
+            tokenStart = token.start
+            tokenEnd = token.end
+            return token.type
+        }
+
+        while (true) {
             val type = delegate.advance() ?: return null
             val start = maxOf(delegate.tokenStart, consumedUntil)
-            if (start >= delegate.tokenEnd) continue
-            split(type, start, delegate.tokenEnd)
-        }
+            val end = delegate.tokenEnd
+            if (start >= end) continue
 
-        val token = pending.removeFirst()
-        tokenStart = token.start
-        tokenEnd = token.end
-        return token.type
+            if (type != MarkdownTokenTypes.TEXT) {
+                tokenStart = start
+                tokenEnd = end
+                consumedUntil = maxOf(consumedUntil, end)
+                return type
+            }
+
+            var cursor = start
+            val limit = minOf(end - 1, contentEnd - 1)
+            var hasDelimiter = false
+            while (cursor < limit) {
+                if (content[cursor] == '|' && content[cursor + 1] == '|' && !isEscaped(cursor)) {
+                    hasDelimiter = true
+                    break
+                }
+                cursor++
+            }
+
+            if (!hasDelimiter) {
+                tokenStart = start
+                tokenEnd = end
+                consumedUntil = maxOf(consumedUntil, end)
+                return type
+            }
+
+            split(start, end)
+            if (!pending.isEmpty()) {
+                val token = pending.removeFirst()
+                tokenStart = token.start
+                tokenEnd = token.end
+                return token.type
+            }
+        }
     }
 
-    private fun split(type: IElementType, start: Int, end: Int) {
-        if (type != MarkdownTokenTypes.TEXT) {
-            pending += Token(type, start, end)
-            consumedUntil = maxOf(consumedUntil, end)
-            return
-        }
+    private fun split(start: Int, end: Int) {
 
         var cursor = start
         var segmentStart = start

@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap
 object SyncedSettings {
     private val KEYS =
         arrayOf("ordering", "android", "notifications", "release-notes", "server-folders")
+    private val KEYS_SET = KEYS.toSet()
 
     private val _fetchCompleted = CompletableDeferred<Unit>()
 
@@ -78,7 +79,7 @@ object SyncedSettings {
 
     fun applyRemoteUpdate(update: Map<String, SyncedSetting>) {
         update.forEach { (key, setting) ->
-            if (key !in KEYS || setting.timestamp <= (revisions[key] ?: 0L)) return@forEach
+            if (key !in KEYS_SET || setting.timestamp <= (revisions[key] ?: 0L)) return@forEach
             revisions[key] = setting.timestamp
             apply(key, setting.value)
             if (key == "android") LoadedSettings.hydrateWithSettings(this)
@@ -133,23 +134,28 @@ object SyncedSettings {
 
     private fun parseNotificationSettings(value: String): NotificationSettings {
         return try {
-            var intermediate =
+            val intermediate =
                 StoatJson.decodeFromString(_NotificationSettingsToParse.serializer(), value)
 
-            // Throw out any value of intermediate.server and .channel that isn't a string
-            intermediate = intermediate.copy(
-                server = intermediate.server.filterValues { it != null }
-                    .filterValues { it is JsonPrimitive }
-                    .filterValues { it!!.jsonPrimitive.isString },
-                channel = intermediate.channel.filterValues { it != null }
-                    .filterValues { it is JsonPrimitive }
-                    .filterValues { it!!.jsonPrimitive.isString }
-            )
+            val server = buildMap {
+                for ((k, v) in intermediate.server) {
+                    if (v is JsonPrimitive && v.isString) {
+                        put(k, v.content)
+                    }
+                }
+            }
+            val channel = buildMap {
+                for ((k, v) in intermediate.channel) {
+                    if (v is JsonPrimitive && v.isString) {
+                        put(k, v.content)
+                    }
+                }
+            }
 
             // Convert the intermediate to a NotificationSettings
             NotificationSettings(
-                server = intermediate.server.mapValues { it.value!!.jsonPrimitive.content },
-                channel = intermediate.channel.mapValues { it.value!!.jsonPrimitive.content }
+                server = server,
+                channel = channel
             )
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { e.asLog() }

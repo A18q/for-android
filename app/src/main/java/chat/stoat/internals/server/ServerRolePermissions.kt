@@ -43,20 +43,26 @@ fun serverRoleCapabilities(server: Server, permissions: Long): ServerRoleCapabil
 }
 
 // as per backend
-fun canManageServerRole(server: Server, role: Role): Boolean {
-    if (server.owner == StoatAPI.selfId) return true
+fun resolveOwnTopRoleRank(server: Server): Double {
+    if (server.owner == StoatAPI.selfId) return Double.NEGATIVE_INFINITY
 
     val member = StoatAPI.selfId
         ?.let { StoatAPI.members.getMember(server.id.orEmpty(), it) }
-        ?: return true
-    val ownTopRank = member
+        ?: return Double.NEGATIVE_INFINITY
+    return member
         .roles
         .orEmpty()
         .mapNotNull { server.roles?.get(it)?.rank }
         .minOrNull()
         ?: Double.MAX_VALUE
+}
 
+fun canManageServerRole(role: Role, ownTopRank: Double): Boolean {
     return (role.rank ?: Double.MAX_VALUE) > ownTopRank
+}
+
+fun canManageServerRole(server: Server, role: Role): Boolean {
+    return canManageServerRole(role, resolveOwnTopRoleRank(server))
 }
 
 fun PermissionDescription.overrideFor(bit: PermissionBit): PermissionOverrideValue = when {

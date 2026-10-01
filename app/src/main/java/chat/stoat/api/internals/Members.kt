@@ -15,11 +15,8 @@ class Members {
     }
 
     fun setMember(serverId: String, member: Member) {
-        if (!memberCache.containsKey(serverId)) {
-            memberCache[serverId] = mutableMapOf()
-        }
-
-        memberCache[serverId]?.set(member.id!!.user, member)
+        val serverMap = memberCache.getOrPut(serverId) { mutableMapOf() }
+        member.id?.user?.let { serverMap[it] = member }
     }
 
     fun removeMember(serverId: String, userId: String) {
@@ -38,9 +35,15 @@ class Members {
      * Returns a Map of userId to server-nickname for the given serverId.
      */
     fun markdownMemberMapFor(serverId: String): Map<String, String> {
-        return memberCache[serverId]?.mapNotNull { (userId, member) ->
-            member.nickname?.let { userId to it }
-        }?.toMap() ?: emptyMap()
+        val serverMembers = memberCache[serverId] ?: return emptyMap()
+        val result = HashMap<String, String>(serverMembers.size)
+        for ((userId, member) in serverMembers) {
+            val nick = member.nickname
+            if (nick != null) {
+                result[userId] = nick
+            }
+        }
+        return result
     }
 
     fun filterNamesFor(serverId: String, query: String): List<Member> {

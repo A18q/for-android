@@ -17,7 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -42,6 +42,8 @@ import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.User
 import java.util.concurrent.CancellationException
 
+private val ReplySpineColor = Color(0xFF4E5058)
+
 @Composable
 fun InReplyTo(
     channelId: String,
@@ -63,6 +65,7 @@ fun InReplyTo(
     val roleIcon = message?.let { authorRoleIcon(it) }
 
     val serverId = remember(channelId) { StoatAPI.channelCache[channelId]?.server }
+    val replyLinePath = remember { Path() }
 
     LaunchedEffect(messageId) {
         if (messageId !in StoatAPI.messageCache) {
@@ -80,28 +83,31 @@ fun InReplyTo(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onMessageClick(messageId) }
-            .drawBehind {
+            .drawWithCache {
                 val strokeWidth = 2.dp.toPx()
                 val cornerRadius = 8.dp.toPx()
                 val spineX = 30.dp.toPx()
                 val targetX = 52.dp.toPx()
                 val centerY = size.height / 2
 
-                val path = Path().apply {
-                    moveTo(spineX, size.height)
-                    lineTo(spineX, centerY + cornerRadius)
-                    quadraticTo(spineX, centerY, spineX + cornerRadius, centerY)
-                    lineTo(targetX, centerY)
-                }
+                replyLinePath.reset()
+                replyLinePath.moveTo(spineX, size.height)
+                replyLinePath.lineTo(spineX, centerY + cornerRadius)
+                replyLinePath.quadraticTo(spineX, centerY, spineX + cornerRadius, centerY)
+                replyLinePath.lineTo(targetX, centerY)
 
-                drawPath(
-                    path = path,
-                    color = Color(0xFF4E5058),
-                    style = Stroke(
-                        width = strokeWidth,
-                        cap = StrokeCap.Round
-                    )
+                val stroke = Stroke(
+                    width = strokeWidth,
+                    cap = StrokeCap.Round
                 )
+
+                onDrawBehind {
+                    drawPath(
+                        path = replyLinePath,
+                        color = ReplySpineColor,
+                        style = stroke
+                    )
+                }
             }
     ) {
         Row(

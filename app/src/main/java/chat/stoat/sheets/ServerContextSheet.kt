@@ -3,8 +3,6 @@ package chat.stoat.sheets
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
@@ -96,12 +94,14 @@ fun ServerContextSheet(
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
     val permissions by rememberServerPermissions(serverId)
-    val serverSettingsOptions = permissions?.let {
-        availableServerSettingsOptions(
-            permissions = it,
-            isOwner = server.owner == StoatAPI.selfId,
-        )
-    }.orEmpty()
+    val serverSettingsOptions = remember(permissions, server.owner) {
+        permissions?.let {
+            availableServerSettingsOptions(
+                permissions = it,
+                isOwner = server.owner == StoatAPI.selfId,
+            )
+        }.orEmpty()
+    }
 
     var showLeaveConfirmation by remember { mutableStateOf(false) }
     val currentFolder = ServerFolders.folderOf(serverId)
@@ -110,12 +110,6 @@ fun ServerContextSheet(
     var showCreateChannelDialog by remember { mutableStateOf(false) }
     var newChannelName by remember { mutableStateOf("") }
     var newChannelType by remember { mutableStateOf("Text") }
-    var settingsExpanded by remember { mutableStateOf(false) }
-    val settingsChevron by animateFloatAsState(
-        targetValue = if (settingsExpanded) 180f else 0f,
-        animationSpec = tween(200),
-        label = "chevron"
-    )
 
     // — Leave confirmation dialog —
     if (showLeaveConfirmation) {
@@ -329,8 +323,6 @@ fun ServerContextSheet(
             headlineContent = { Text("Create Channel") },
             onClick = { showCreateChannelDialog = true }
         )
-
-        HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
         HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 

@@ -103,6 +103,7 @@ import chat.stoat.composables.vectorassets.HL_USERNAME
 import chat.stoat.composables.vectorassets.Nametag
 import chat.stoat.core.model.schemas.AutumnResource
 import chat.stoat.core.model.schemas.Metadata
+import chat.stoat.core.model.schemas.User
 import chat.stoat.internals.extensions.zero
 import chat.stoat.screens.chat.LocalIsConnected
 import io.github.g00fy2.quickie.QRResult
@@ -117,6 +118,14 @@ private fun showInvalidClipboardToast(context: Context) {
         Toast.LENGTH_SHORT
     ).show()
 }
+
+private data class FriendBuckets(
+    val incoming: List<User>,
+    val outgoing: List<User>,
+    val online: List<User>,
+    val offline: List<User>,
+    val blocked: List<User>,
+)
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -135,11 +144,31 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
     var addByTagSheetVisible by rememberSaveable { mutableStateOf(false) }
     var qrResult by rememberSaveable { mutableStateOf<QRResult?>(null) }
 
-    val incomingRequests = remember(StoatAPI.userCache.values) { FriendRequests.getIncoming() }
-    val outgoingRequests = remember(StoatAPI.userCache.values) { FriendRequests.getOutgoing() }
-    val onlineFriends = remember(StoatAPI.userCache.values) { FriendRequests.getOnlineFriends() }
-    val offlineFriends = remember(StoatAPI.userCache.values) { FriendRequests.getFriends(true) }
-    val blockedUsers = remember(StoatAPI.userCache.values) { FriendRequests.getBlocked() }
+    val buckets = remember(StoatAPI.userCache.values) {
+        val incoming = mutableListOf<User>()
+        val outgoing = mutableListOf<User>()
+        val online = mutableListOf<User>()
+        val offline = mutableListOf<User>()
+        val blocked = mutableListOf<User>()
+        for (user in StoatAPI.userCache.values) {
+            when (user.relationship) {
+                "Incoming" -> incoming.add(user)
+                "Outgoing" -> outgoing.add(user)
+                "Blocked" -> blocked.add(user)
+                "Friend" -> if (user.online == true) online.add(user) else offline.add(user)
+            }
+        }
+        FriendBuckets(incoming, outgoing, online, offline, blocked)
+    }
+    val (incomingRequests, outgoingRequests, onlineFriends, offlineFriends, blockedUsers) = buckets
+
+    val onUserClick = remember<(String) -> Unit>(scope) {
+        { userId ->
+            scope.launch {
+                ActionChannel.send(Action.OpenUserSheet(userId, null))
+            }
+        }
+    }
 
     val scanQrCodeLauncher = rememberLauncherForActivityResult(ScanQRCode()) { result ->
         qrResult = result
@@ -181,9 +210,9 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text(
-                    text = AnnotatedString.fromHtml(
-                        stringResource(
+                val addByTagDescription = remember {
+                    AnnotatedString.fromHtml(
+                        context.getString(
                             R.string.friends_add_by_tag_sheet_description,
                             "<font color=\"${
                                 Color(HL_USERNAME).toArgb().let {
@@ -205,7 +234,10 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                             }\">",
                             "</font>",
                         )
-                    ),
+                    )
+                }
+                Text(
+                    text = addByTagDescription,
                     style = MaterialTheme.typography.bodyMedium,
                     color = LocalContentColor.current.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center,
@@ -613,7 +645,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
         ) {
             LazyColumn(state = listState) {
                 if (incomingRequests.isNotEmpty()) {
-                    stickyHeader(key = "incoming") {
+                    stickyHeader(key = "incoming", contentType = "header") {
                         CountableListHeader(
                             text = stringResource(id = R.string.friends_incoming_requests),
                             count = incomingRequests.size
@@ -622,7 +654,8 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
 
                     items(
                         count = incomingRequests.size,
-                        key = { incomingRequests[it].id ?: it }
+                        key = { incomingRequests[it].id ?: it },
+                        contentType = { "member" }
                     ) { index ->
                         val item = incomingRequests[index]
                         val isLast = index == incomingRequests.size - 1
@@ -634,13 +667,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                             userId = item.id ?: "",
                             first = index == 0,
                             last = isLast,
-                            onClick = {
-                                scope.launch {
-                                    item.id?.let { userId ->
-                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
-                                    }
-                                }
-                            },
+                            onClick = { item.id?.let(onUserClick) },
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
 
@@ -651,7 +678,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                 }
 
                 if (outgoingRequests.isNotEmpty()) {
-                    stickyHeader(key = "outgoing") {
+                    stickyHeader(key = "outgoing", contentType = "header") {
                         CountableListHeader(
                             text = stringResource(id = R.string.friends_outgoing_requests),
                             count = outgoingRequests.size
@@ -660,7 +687,8 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
 
                     items(
                         count = outgoingRequests.size,
-                        key = { outgoingRequests[it].id ?: it }
+                        key = { outgoingRequests[it].id ?: it },
+                        contentType = { "member" }
                     ) { index ->
                         val item = outgoingRequests[index]
                         val isLast = index == outgoingRequests.size - 1
@@ -672,13 +700,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                             userId = item.id ?: "",
                             first = index == 0,
                             last = isLast,
-                            onClick = {
-                                scope.launch {
-                                    item.id?.let { userId ->
-                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
-                                    }
-                                }
-                            },
+                            onClick = { item.id?.let(onUserClick) },
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
 
@@ -689,7 +711,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                 }
 
                 if (onlineFriends.isNotEmpty()) {
-                    stickyHeader(key = "online") {
+                    stickyHeader(key = "online", contentType = "header") {
                         CountableListHeader(
                             text = stringResource(id = R.string.status_online),
                             count = onlineFriends.size
@@ -698,7 +720,8 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
 
                     items(
                         count = onlineFriends.size,
-                        key = { onlineFriends[it].id ?: it }
+                        key = { onlineFriends[it].id ?: it },
+                        contentType = { "member" }
                     ) { index ->
                         val item = onlineFriends[index]
                         val isLast = index == onlineFriends.size - 1
@@ -710,13 +733,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                             userId = item.id ?: "",
                             first = index == 0,
                             last = isLast,
-                            onClick = {
-                                scope.launch {
-                                    item.id?.let { userId ->
-                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
-                                    }
-                                }
-                            },
+                            onClick = { item.id?.let(onUserClick) },
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
 
@@ -727,7 +744,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                 }
 
                 if (offlineFriends.isNotEmpty()) {
-                    stickyHeader(key = "not_online") {
+                    stickyHeader(key = "not_online", contentType = "header") {
                         CountableListHeader(
                             text = stringResource(id = R.string.friends_all),
                             count = offlineFriends.size
@@ -736,7 +753,8 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
 
                     items(
                         count = offlineFriends.size,
-                        key = { offlineFriends[it].id ?: it }
+                        key = { offlineFriends[it].id ?: it },
+                        contentType = { "member" }
                     ) { index ->
                         val item = offlineFriends[index]
                         val isLast = index == offlineFriends.size - 1
@@ -748,13 +766,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                             userId = item.id ?: "",
                             first = index == 0,
                             last = isLast,
-                            onClick = {
-                                scope.launch {
-                                    item.id?.let { userId ->
-                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
-                                    }
-                                }
-                            },
+                            onClick = { item.id?.let(onUserClick) },
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
 
@@ -765,7 +777,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                 }
 
                 if (blockedUsers.isNotEmpty()) {
-                    stickyHeader(key = "blocked") {
+                    stickyHeader(key = "blocked", contentType = "header") {
                         CountableListHeader(
                             text = stringResource(id = R.string.friends_blocked),
                             count = blockedUsers.size
@@ -774,7 +786,8 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
 
                     items(
                         count = blockedUsers.size,
-                        key = { blockedUsers[it].id ?: it }
+                        key = { blockedUsers[it].id ?: it },
+                        contentType = { "member" }
                     ) { index ->
                         val item = blockedUsers[index]
                         val isLast = index == blockedUsers.size - 1
@@ -786,13 +799,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                             userId = item.id ?: "",
                             first = index == 0,
                             last = isLast,
-                            onClick = {
-                                scope.launch {
-                                    item.id?.let { userId ->
-                                        ActionChannel.send(Action.OpenUserSheet(userId, null))
-                                    }
-                                }
-                            },
+                            onClick = { item.id?.let(onUserClick) },
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
 
@@ -820,11 +827,7 @@ fun FriendsScreen(topNav: NavController, useDrawer: Boolean, onDrawerClicked: ()
                         checked = fabMenuExpanded,
                         onCheckedChange = { fabMenuExpanded = !fabMenuExpanded }
                     ) {
-                        val imageVector by remember {
-                            derivedStateOf {
-                                if (checkedProgress > 0.5f) Icons.Filled.Close else Icons.Filled.Add
-                            }
-                        }
+                        val imageVector = if (checkedProgress > 0.5f) Icons.Filled.Close else Icons.Filled.Add
                         Icon(
                             painter = rememberVectorPainter(imageVector),
                             contentDescription = null,

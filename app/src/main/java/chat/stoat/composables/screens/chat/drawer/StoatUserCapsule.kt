@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +49,8 @@ val StatusIdleColor = Color(0xFFF0B232)
 val StatusDndColor = Color(0xFFF23F43)
 val StatusOfflineColor = Color(0xFF80848E)
 
+private val CapsuleShape = RoundedCornerShape(28.dp)
+
 @Composable
 fun StoatUserCapsule(
     onOpenProfile: () -> Unit,
@@ -56,67 +59,62 @@ fun StoatUserCapsule(
     modifier: Modifier = Modifier
 ) {
     val selfUser = StoatAPI.userCache[StoatAPI.selfId]
-    val displayName = selfUser?.let { User.resolveDefaultName(it) } ?: "You"
-    val customStatus = selfUser?.status?.text?.takeIf { it.isNotBlank() }
-    val presenceText = customStatus ?: when (selfUser?.status?.presence) {
-        "Idle" -> "Idle"
-        "Focus", "Busy" -> "Do Not Disturb"
-        "Invisible" -> "Invisible"
-        else -> if (selfUser?.online == true) "Online" else "Offline"
+    val displayName = remember(selfUser?.username) {
+        selfUser?.let { User.resolveDefaultName(it) } ?: "You"
+    }
+    val presenceText = remember(selfUser?.status?.text, selfUser?.status?.presence, selfUser?.online) {
+        val customStatus = selfUser?.status?.text?.takeIf { it.isNotBlank() }
+        customStatus ?: when (selfUser?.status?.presence) {
+            "Idle" -> "Idle"
+            "Focus", "Busy" -> "Do Not Disturb"
+            "Invisible" -> "Invisible"
+            else -> if (selfUser?.online == true) "Online" else "Offline"
+        }
     }
 
-    val statusDotColor = when (selfUser?.status?.presence) {
-        "Idle" -> StatusIdleColor
-        "Focus", "Busy" -> StatusDndColor
-        "Invisible" -> StatusOfflineColor
-        else -> if (selfUser?.online == true) StatusOnlineColor else StatusOfflineColor
+    val statusDotColor = remember(selfUser?.status?.presence, selfUser?.online) {
+        when (selfUser?.status?.presence) {
+            "Idle" -> StatusIdleColor
+            "Focus", "Busy" -> StatusDndColor
+            "Invisible" -> StatusOfflineColor
+            else -> if (selfUser?.online == true) StatusOnlineColor else StatusOfflineColor
+        }
     }
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 6.dp)
-            .shadow(elevation = 12.dp, shape = RoundedCornerShape(28.dp))
-            .clip(RoundedCornerShape(28.dp))
+            .shadow(elevation = 12.dp, shape = CapsuleShape)
+            .clip(CapsuleShape)
             .background(StoatCapsuleBg)
-            .border(1.dp, StoatCapsuleBorder, RoundedCornerShape(28.dp))
+            .border(1.dp, StoatCapsuleBorder, CapsuleShape)
             .clickable { onOpenProfile() }
-            .padding(horizontal = 10.dp, vertical = 7.dp)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+        // 38dp Avatar Container with Status Badge
+        Box(
+            modifier = Modifier.size(40.dp),
+            contentAlignment = Alignment.BottomEnd
         ) {
-            // 38dp Avatar Container with Status Badge
-            Box(
-                modifier = Modifier.size(40.dp),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                UserAvatar(
-                    username = displayName,
-                    presence = presenceFromStatus(selfUser?.status?.presence, selfUser?.online ?: false),
-                    userId = StoatAPI.selfId ?: "",
-                    avatar = selfUser?.avatar,
-                    size = 38.dp,
-                    presenceSize = 0.dp
-                )
+            UserAvatar(
+                username = displayName,
+                presence = presenceFromStatus(selfUser?.status?.presence, selfUser?.online ?: false),
+                userId = StoatAPI.selfId ?: "",
+                avatar = selfUser?.avatar,
+                size = 38.dp,
+                presenceSize = 0.dp
+            )
 
-                // 13dp Status dot with 2dp border matching capsule
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .clip(CircleShape)
-                        .background(StoatCapsuleBg),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(statusDotColor)
-                    )
-                }
-            }
+            // 14dp Status dot with 2dp border matching capsule
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .border(2.dp, StoatCapsuleBg, CircleShape)
+                    .background(statusDotColor, CircleShape)
+            )
+        }
 
             Spacer(Modifier.width(10.dp))
 
@@ -194,4 +192,3 @@ fun StoatUserCapsule(
             }
         }
     }
-}

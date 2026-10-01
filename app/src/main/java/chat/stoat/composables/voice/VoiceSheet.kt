@@ -76,9 +76,11 @@ import com.twilio.audioswitch.AudioDeviceChangeListener
 import io.livekit.android.compose.local.RoomLocal
 import io.livekit.android.compose.state.rememberParticipants
 import io.livekit.android.compose.state.rememberTracks
+import io.livekit.android.compose.types.TrackReference
 import io.livekit.android.compose.ui.ScaleType
 import io.livekit.android.compose.ui.VideoTrackView
 import io.livekit.android.room.Room
+import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.track.LocalVideoTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.screencapture.ScreenCaptureParams
@@ -125,6 +127,13 @@ fun VoiceSheet(onDisconnect: () -> Unit) {
                 audioHandler?.unregisterAudioDeviceChangeListener(listener)
             }
         }
+        val voiceStates = StoatAPI.voiceStateCache[channelId]
+        val voiceStateMap = remember(voiceStates) {
+            voiceStates?.participants?.associateBy { it.id }
+        }
+        val activeSpeakerIdentities = remember(activeSpeakers) {
+            activeSpeakers.mapNotNullTo(HashSet()) { it.identity }
+        }
 
         Column {
             LazyColumn(
@@ -138,85 +147,33 @@ fun VoiceSheet(onDisconnect: () -> Unit) {
                         )
                     )
             ) {
-                val voiceStates = StoatAPI.voiceStateCache[channelId]
-                items(participants.size) { index ->
+                items(
+                    count = participants.size,
+                    key = { index -> participants[index].identity?.value ?: index }
+                ) { index ->
                     val participant = participants[index]
                     val userId = participant.identity?.value
                     if (userId != null) {
-                        val micEnabled by participant::isMicrophoneEnabled.flow.collectAsState()
-                        val cameraEnabled by participant::isCameraEnabled.flow.collectAsState()
-                        val screenShareEnabled by participant::isScreenShareEnabled.flow.collectAsState()
-                        val cachedState = voiceStates?.participants?.find { it.id == userId }
-                        VoiceParticipant(
-                            state = UserVoiceState(
-                                id = userId,
-                                isReceiving = cachedState?.isReceiving ?: true,
-                                isPublishing = micEnabled,
-                                screensharing = screenShareEnabled,
-                                camera = cameraEnabled,
-                                joinedAt = cachedState?.joinedAt
-                            ),
+                        VoiceParticipantItem(
+                            participant = participant,
                             channelId = channelId,
-                            speaking = activeSpeakers.any { it.identity == participant.identity }
+                            cachedState = voiceStateMap?.get(userId),
+                            isSpeaking = participant.identity in activeSpeakerIdentities,
                         )
                     }
                 }
-                items(trackRefs.size) { index ->
-                    val trackRef = trackRefs[index]
-                    val publication = trackRef.publication
-                    if (publication != null) {
-                        val isTrackMuted by publication::muted.flow.collectAsState()
-                        if (!isTrackMuted) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    .aspectRatio(16f / 9f)
-                                    .clip(MaterialTheme.shapes.large)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                            ) {
-                                VideoTrackView(
-                                    trackReference = trackRef,
-                                    room = room,
-                                    // Letterbox vertical feeds
-                                    scaleType = ScaleType.FitInside,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceContainer.copy(
-                                        alpha = 0.85f
-                                    ),
-                                    shape = MaterialTheme.shapes.small,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomStart)
-                                        .padding(8.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.padding(
-                                            horizontal = 8.dp,
-                                            vertical = 4.dp
-                                        )
-                                    ) {
-                                        if (trackRef.source == Track.Source.SCREEN_SHARE) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_screen_share_24dp),
-                                                contentDescription = stringResource(R.string.voice_screen_sharing),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                        Text(
-                                            text = trackRef.participant.identity?.value
-                                                ?.let { displayNameInChannel(it, channelId) }
-                                                ?: stringResource(R.string.unknown),
-                                            style = MaterialTheme.typography.labelMedium
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                items(
+                    count = trackRefs.size,
+                    key = { index ->
+                        val trackRef = trackRefs[index]
+                        trackRef.publication?.sid ?: "${trackRef.participant.identity?.value}_${trackRef.source}"
                     }
+                ) { index ->
+                    VideoTrackItem(
+                        trackRef = trackRefs[index],
+                        room = room,
+                        channelId = channelId
+                    )
                 }
                 item(key = "status") {
                     var showStatus by remember { mutableStateOf(true) }
@@ -626,4 +583,90 @@ private fun audioDeviceLabel(device: AudioDevice): String = when (device) {
     is AudioDevice.WiredHeadset -> stringResource(R.string.voice_audio_output_wired_headset)
     is AudioDevice.Earpiece -> stringResource(R.string.voice_audio_output_earpiece)
     is AudioDevice.Speakerphone -> stringResource(R.string.voice_audio_output_speaker)
+}
+
+@Composable
+private fun VoiceParticipantItem(
+    participant: Participant,
+    channelId: String,
+    cachedState: UserVoiceState?,
+    isSpeaking: Boolean,
+) {
+    val userId = participant.identity?.value ?: return
+    val micEnabled by participant::isMicrophoneEnabled.flow.collectAsState()
+    val cameraEnabled by participant::isCameraEnabled.flow.collectAsState()
+    val screenShareEnabled by participant::isScreenShareEnabled.flow.collectAsState()
+
+    VoiceParticipant(
+        state = UserVoiceState(
+            id = userId,
+            isReceiving = cachedState?.isReceiving ?: true,
+            isPublishing = micEnabled,
+            screensharing = screenShareEnabled,
+            camera = cameraEnabled,
+            joinedAt = cachedState?.joinedAt
+        ),
+        channelId = channelId,
+        speaking = isSpeaking
+    )
+}
+
+@Composable
+private fun VideoTrackItem(
+    trackRef: TrackReference,
+    room: Room,
+    channelId: String,
+) {
+    val publication = trackRef.publication ?: return
+    val isTrackMuted by publication::muted.flow.collectAsState()
+    if (!isTrackMuted) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .aspectRatio(16f / 9f)
+                .clip(MaterialTheme.shapes.large)
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+        ) {
+            VideoTrackView(
+                trackReference = trackRef,
+                room = room,
+                // Letterbox vertical feeds
+                scaleType = ScaleType.FitInside,
+                modifier = Modifier.fillMaxSize()
+            )
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer.copy(
+                    alpha = 0.85f
+                ),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(
+                        horizontal = 8.dp,
+                        vertical = 4.dp
+                    )
+                ) {
+                    if (trackRef.source == Track.Source.SCREEN_SHARE) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_screen_share_24dp),
+                            contentDescription = stringResource(R.string.voice_screen_sharing),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Text(
+                        text = trackRef.participant.identity?.value
+                            ?.let { displayNameInChannel(it, channelId) }
+                            ?: stringResource(R.string.unknown),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+    }
 }

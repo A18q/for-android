@@ -42,15 +42,16 @@ fun VoiceParticipant(
     )
 
     val user = StoatAPI.userCache[state.id]
+    val displayName = displayNameInChannel(state.id, channelId)
     ListItem(
         modifier = modifier,
         colors = TransparentListItemColours,
         headlineContent = {
-            Text(displayNameInChannel(state.id, channelId))
+            Text(displayName)
         },
         leadingContent = {
             UserAvatar(
-                username = displayNameInChannel(state.id, channelId),
+                username = displayName,
                 userId = state.id,
                 allowAnimation = speaking,
                 avatar = user?.avatar,

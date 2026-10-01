@@ -76,6 +76,27 @@ fun MessageContextSheet(
     var showReactSheet by remember { mutableStateOf(false) }
     var showDeleteMessageConfirmation by remember { mutableStateOf(false) }
 
+    val previewMessage = remember(message) {
+        message.copy(
+            tail = false,
+            masquerade = null
+        )
+    }
+
+    val canDeleteMessage = remember(message.channel, message.author, StoatAPI.selfId) {
+        if (message.author == StoatAPI.selfId) {
+            true
+        } else {
+            val channel = message.channel?.let { StoatAPI.channelCache[it] }
+            if (channel != null) {
+                val selfUser = StoatAPI.userCache[StoatAPI.selfId]
+                Roles.permissionFor(channel, selfUser) has PermissionBit.ManageMessages
+            } else {
+                false
+            }
+        }
+    }
+
     if (showShareSheet) {
         val shareSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -315,10 +336,7 @@ fun MessageContextSheet(
             modifier = Modifier.padding(top = 8.dp, start = 16.dp, end = 16.dp, bottom = 4.dp),
         ) {
             Message(
-                message = message.copy(
-                    tail = false,
-                    masquerade = null
-                )
+                message = previewMessage
             )
 
             HorizontalDivider()
@@ -469,15 +487,7 @@ fun MessageContextSheet(
             }
         )
 
-        if (
-            (message.channel?.let {
-                val channel = StoatAPI.channelCache[it] ?: return@let null
-                Roles.permissionFor(
-                    channel,
-                    StoatAPI.userCache[StoatAPI.selfId]
-                )
-            } ?: 0) has PermissionBit.ManageMessages || message.author == StoatAPI.selfId
-        ) {
+        if (canDeleteMessage) {
             SheetButton(
                 leadingContent = {
                     Icon(

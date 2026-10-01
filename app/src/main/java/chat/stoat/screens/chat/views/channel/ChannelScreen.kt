@@ -560,7 +560,7 @@ fun ChannelScreen(
         }
     }
 
-    LaunchedEffect(lazyListState) {
+    LaunchedEffect(lazyListState, viewModel) {
         snapshotFlow {
             Triple(
                 isNearOlderEdge.value,
@@ -577,7 +577,7 @@ fun ChannelScreen(
             }
     }
 
-    LaunchedEffect(lazyListState) {
+    LaunchedEffect(lazyListState, viewModel) {
         snapshotFlow {
             Triple(
                 lazyListState.firstVisibleItemIndex <= 6,
@@ -949,6 +949,18 @@ fun ChannelScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.BottomCenter
                         ) {
+                            val onSetDrawerGestureEnabled = remember<(Boolean) -> Unit> { { setDrawerGestureEnabled(it) } }
+                            val onSetDisableScroll = remember<(Boolean) -> Unit> { { disableScroll = it } }
+                            val onShowMessageBottomSheet = remember<(String) -> Unit> {
+                                {
+                                    messageContextSheetTarget = it
+                                    messageContextSheetShown = true
+                                }
+                            }
+                            val onPutTextAtCursorPosition = remember(viewModel) { { text: String -> viewModel.putAtCursorPosition(text) } }
+                            val onReplyToMessage: suspend (String) -> Unit = remember(viewModel) { { id: String -> viewModel.addReplyTo(id) } }
+                            val onJumpToMessage = remember(viewModel) { { id: String -> viewModel.requestJump(id) } }
+
                             LazyColumn(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -981,13 +993,13 @@ fun ChannelScreen(
                                             return@items index
                                         }
                                         when (val item = viewModel.items[index]) {
-                                            is ChannelScreenItem.RegularMessage -> item.message.id!!
-                                            is ChannelScreenItem.ProspectiveMessage -> item.message.id!!
-                                            is ChannelScreenItem.FailedMessage -> item.message.id!!
-                                            is ChannelScreenItem.SystemMessage -> item.message.id!!
-                                            is ChannelScreenItem.DateDivider -> item.instant.toEpochMilliseconds()
-                                            is ChannelScreenItem.LoadTrigger -> index
-                                            is ChannelScreenItem.Loading -> index
+                                            is ChannelScreenItem.RegularMessage -> item.message.id ?: "regular_$index"
+                                            is ChannelScreenItem.ProspectiveMessage -> item.message.id ?: "prospective_$index"
+                                            is ChannelScreenItem.FailedMessage -> item.message.id ?: "failed_$index"
+                                            is ChannelScreenItem.SystemMessage -> item.message.id ?: "system_$index"
+                                            is ChannelScreenItem.DateDivider -> "date_${item.instant.toEpochMilliseconds()}"
+                                            is ChannelScreenItem.LoadTrigger -> "load_trigger_${item.before}_${item.after}"
+                                            is ChannelScreenItem.Loading -> "loading_skeleton"
                                         }
                                     },
                                     contentType = { index ->
@@ -1020,10 +1032,15 @@ fun ChannelScreen(
                                         animationSpec = tween(durationMillis = 500),
                                         label = "messageJumpHighlight",
                                     )
+                                    val highlightModifier = if (highlightColor != Color.Transparent) {
+                                        Modifier.background(highlightColor)
+                                    } else {
+                                        Modifier
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(highlightColor)
+                                            .then(highlightModifier)
                                     ) {
                                         when (item) {
                                             is ChannelScreenItem.RegularMessage -> {
@@ -1031,25 +1048,18 @@ fun ChannelScreen(
                                                     item.message,
                                                     viewModel.channel,
                                                     drawerIsOpen = drawerIsOpen,
-                                                    setDrawerGestureEnabled = {
-                                                        setDrawerGestureEnabled(it)
-                                                    },
-                                                    setDisableScroll = {
-                                                        disableScroll = it
-                                                    },
-                                                    showMessageBottomSheet = {
-                                                        messageContextSheetTarget = it
-                                                        messageContextSheetShown = true
-                                                    },
+                                                    setDrawerGestureEnabled = onSetDrawerGestureEnabled,
+                                                    setDisableScroll = onSetDisableScroll,
+                                                    showMessageBottomSheet = onShowMessageBottomSheet,
                                                     showReactBottomSheet = {
                                                         item.message.id?.let {
                                                             reactSheetTarget = it
                                                             reactSheetShown = true
                                                         }
                                                     },
-                                                    putTextAtCursorPosition = viewModel::putAtCursorPosition,
-                                                    replyToMessage = viewModel::addReplyTo,
-                                                    jumpToMessage = viewModel::requestJump,
+                                                    putTextAtCursorPosition = onPutTextAtCursorPosition,
+                                                    replyToMessage = onReplyToMessage,
+                                                    jumpToMessage = onJumpToMessage,
                                                     scope = scope,
                                                     mdAst = item.mdAst
                                                 )

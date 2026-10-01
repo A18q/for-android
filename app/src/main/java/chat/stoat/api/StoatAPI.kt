@@ -381,7 +381,7 @@ object StoatAPI {
             return
         }
 
-        val db = Database(SqlStorage.driver)
+        val db = SqlStorage.database
 
         val channels = db.channelQueries.selectAll().executeAsList().map {
             ChannelSchema(
@@ -408,7 +408,22 @@ object StoatAPI {
             )
         }
         channelCache.clear()
-        channelCache.putAll(channels.associateBy { it.id!! })
+        for (c in channels) {
+            val cId = c.id
+            if (cId != null) {
+                channelCache[cId] = c
+            }
+        }
+
+        // Group channel IDs by server in a single pass O(channels) to avoid O(servers * channels) filter overhead
+        val serverChannels = mutableMapOf<String, MutableList<String>>()
+        for (c in channels) {
+            val serverId = c.server
+            val channelId = c.id
+            if (serverId != null && channelId != null) {
+                serverChannels.getOrPut(serverId) { mutableListOf() }.add(channelId)
+            }
+        }
 
         val servers = db.serverQueries.selectAll().executeAsList().map {
             Server(
@@ -423,14 +438,16 @@ object StoatAPI {
                     id = it.bannerId,
                 ),
                 flags = it.flags,
-                channels = channels
-                    .filter { c -> c.server == it.id }
-                    .filterNot { c -> c.id == null }
-                    .map { c -> c.id!! },
+                channels = serverChannels[it.id] ?: emptyList(),
             )
         }
         serverCache.clear()
-        serverCache.putAll(servers.associateBy { it.id!! })
+        for (s in servers) {
+            val sId = s.id
+            if (sId != null) {
+                serverCache[sId] = s
+            }
+        }
 
         openForLocalHydration = false
     }
@@ -439,7 +456,7 @@ object StoatAPI {
      * Clear the local caching database.
      */
     private fun clearPersistentCache() {
-        val db = Database(SqlStorage.driver)
+        val db = SqlStorage.database
         db.serverQueries.clear()
         db.channelQueries.clear()
     }

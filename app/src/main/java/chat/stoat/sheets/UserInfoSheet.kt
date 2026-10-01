@@ -86,7 +86,9 @@ private val DiscordTextMuted = Color(0xFF949BA4)
 private val DiscordBlurple = Color(0xFF5865F2)
 private val DiscordDivider = Color(0xFF2B2D31)
 
-private fun safeParseColor(hex: String?, fallback: Color = Color(0xFF99AAB5)): Color {
+private val FallbackRoleColor = Color(0xFF99AAB5)
+
+private fun safeParseColor(hex: String?, fallback: Color = FallbackRoleColor): Color {
     if (hex.isNullOrBlank()) return fallback
     return try {
         val clean = if (hex.startsWith("#")) hex else "#$hex"
@@ -235,7 +237,9 @@ fun UserInfoSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            val displayName = member?.nickname ?: User.resolveDefaultName(user)
+            val displayName = remember(user, member?.nickname) {
+                member?.nickname ?: User.resolveDefaultName(user)
+            }
             Text(
                 text = displayName,
                 fontSize = 24.sp,
@@ -243,12 +247,14 @@ fun UserInfoSheet(
                 color = DiscordHeader
             )
 
-            val handle = user.username?.let {
-                val disc = user.discriminator?.takeIf { d -> d.isNotEmpty() }?.let { d -> "#$d" } ?: ""
-                "@$it$disc"
-            } ?: ""
-            val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
-            val subtitle = if (pronouns != null && handle.isNotEmpty()) "$handle • $pronouns" else handle.ifEmpty { pronouns ?: "" }
+            val subtitle = remember(user.username, user.discriminator, user.pronouns) {
+                val handle = user.username?.let {
+                    val disc = user.discriminator?.takeIf { d -> d.isNotEmpty() }?.let { d -> "#$d" } ?: ""
+                    "@$it$disc"
+                } ?: ""
+                val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
+                if (pronouns != null && handle.isNotEmpty()) "$handle • $pronouns" else handle.ifEmpty { pronouns ?: "" }
+            }
 
             if (subtitle.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -357,19 +363,23 @@ fun UserInfoSheet(
             }
 
             // Card 2: MEMBER SINCE (Server Join & Account Creation)
-            val accountAt = user.id?.let {
-                DateUtils.getRelativeTimeSpanString(
-                    ULID.asTimestamp(user.id!!),
-                    System.currentTimeMillis(),
-                    DateUtils.MINUTE_IN_MILLIS
-                ).toString()
+            val accountAt = remember(user.id) {
+                user.id?.let {
+                    DateUtils.getRelativeTimeSpanString(
+                        ULID.asTimestamp(it),
+                        System.currentTimeMillis(),
+                        DateUtils.MINUTE_IN_MILLIS
+                    ).toString()
+                }
             }
-            val joinedAt = member?.joinedAt?.let {
-                DateUtils.getRelativeTimeSpanString(
-                    Instant.parse(member.joinedAt!!).toEpochMilliseconds(),
-                    System.currentTimeMillis(),
-                    DateUtils.MINUTE_IN_MILLIS
-                ).toString()
+            val joinedAt = remember(member?.joinedAt) {
+                member?.joinedAt?.let {
+                    DateUtils.getRelativeTimeSpanString(
+                        Instant.parse(it).toEpochMilliseconds(),
+                        System.currentTimeMillis(),
+                        DateUtils.MINUTE_IN_MILLIS
+                    ).toString()
+                }
             }
 
             Surface(
@@ -444,8 +454,10 @@ fun UserInfoSheet(
             }
 
             // Card 3: ROLES — {count} (Hierarchical Rank Sorted Discord Role Pills)
-            val roles = member?.roles?.mapNotNull { roleId -> server?.roles?.get(roleId) }
-                ?.sortedByDescending { it.rank ?: 0.0 }
+            val roles = remember(member?.roles, server?.roles) {
+                member?.roles?.mapNotNull { roleId -> server?.roles?.get(roleId) }
+                    ?.sortedByDescending { it.rank ?: 0.0 }
+            }
             if (!roles.isNullOrEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -526,7 +538,7 @@ private fun DiscordBadgeCapsule(badges: Long) {
 // ─── Discord Authentic Role Pill (Color Dot + Text on Inset Background) ───
 @Composable
 private fun DiscordRolePill(role: Role) {
-    val roleColor = safeParseColor(role.colour)
+    val roleColor = remember(role.colour) { safeParseColor(role.colour) }
 
     Row(
         modifier = Modifier

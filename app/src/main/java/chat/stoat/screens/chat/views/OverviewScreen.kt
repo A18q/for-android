@@ -79,6 +79,13 @@ private val DiscordBlurple = Color(0xFF5865F2)
 private val DiscordUnreadBadge = Color(0xFFED4245)
 private val DiscordDivider = Color(0xFF35373C)
 
+private val ActionButtonShape = RoundedCornerShape(12.dp)
+private val FriendCardShape = RoundedCornerShape(20.dp)
+
+private val relativeTimeDateFormat = ThreadLocal.withInitial {
+    SimpleDateFormat("MM/dd/yy", Locale.getDefault())
+}
+
 private fun formatRelativeTime(ulid: String?): String {
     if (ulid == null) return ""
     return try {
@@ -96,8 +103,7 @@ private fun formatRelativeTime(ulid: String?): String {
             days == 1L -> "Yesterday"
             days < 7 -> "${days}d"
             else -> {
-                val format = SimpleDateFormat("MM/dd/yy", Locale.getDefault())
-                format.format(Date(timestamp))
+                relativeTimeDateFormat.get().format(Date(timestamp))
             }
         }
     } catch (_: Exception) {
@@ -201,7 +207,7 @@ fun OverviewScreen(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(ActionButtonShape)
                             .background(if (isSearchExpanded) DiscordBlurple else DiscordCardBg)
                             .clickable { isSearchExpanded = !isSearchExpanded },
                         contentAlignment = Alignment.Center
@@ -218,7 +224,7 @@ fun OverviewScreen(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(ActionButtonShape)
                             .background(DiscordCardBg)
                             .clickable { onDestinationChanged(ChatRouterDestination.Friends) },
                         contentAlignment = Alignment.Center
@@ -235,7 +241,7 @@ fun OverviewScreen(
                     Row(
                         modifier = Modifier
                             .height(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(ActionButtonShape)
                             .background(DiscordCardBg)
                             .clickable { onDestinationChanged(ChatRouterDestination.Friends) }
                             .padding(horizontal = 14.dp),
@@ -262,7 +268,7 @@ fun OverviewScreen(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(ActionButtonShape)
                             .background(DiscordBlurple)
                             .clickable { onDestinationChanged(ChatRouterDestination.Friends) },
                         contentAlignment = Alignment.Center
@@ -467,7 +473,7 @@ private fun ActiveNowFriendCard(
     Box(
         modifier = Modifier
             .size(86.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(FriendCardShape)
             .background(DiscordCardBg)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
@@ -489,17 +495,9 @@ private fun ActiveNowFriendCard(
             Box(
                 modifier = Modifier
                     .size(16.dp)
-                    .clip(CircleShape)
-                    .background(DiscordCardBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(statusDotColor)
-                )
-            }
+                    .border(2.dp, DiscordCardBg, CircleShape)
+                    .background(statusDotColor, CircleShape)
+            )
         }
     }
 }
@@ -512,31 +510,35 @@ private fun DirectMessageItemRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val partner = if (channel.channelType == ChannelType.DirectMessage) {
-        val partnerId = ChannelUtils.resolveDMPartner(channel)
-        StoatAPI.userCache[partnerId]
-    } else null
+    val partner = remember(channel.id, channel.recipients) {
+        if (channel.channelType == ChannelType.DirectMessage) {
+            val partnerId = ChannelUtils.resolveDMPartner(channel)
+            StoatAPI.userCache[partnerId]
+        } else null
+    }
 
-    val name = partner?.let { User.resolveDefaultName(it) } ?: channel.name ?: "Unknown"
+    val name = remember(partner?.id, partner?.username, channel.name) {
+        partner?.let { User.resolveDefaultName(it) } ?: channel.name ?: "Unknown"
+    }
 
     val lastMessage = channel.lastMessageID?.let { StoatAPI.messageCache[it] }
-    val previewText = when {
-        lastMessage != null -> {
-            val prefix = if (lastMessage.author == StoatAPI.selfId) "You: " else ""
-            val content = lastMessage.content?.takeIf { it.isNotBlank() }
-                ?: if (lastMessage.attachments?.isNotEmpty() == true) "📷 Attachment" else ""
-            "$prefix$content"
+    val previewText = remember(lastMessage?.id, lastMessage?.content, lastMessage?.attachments) {
+        when {
+            lastMessage != null -> {
+                val prefix = if (lastMessage.author == StoatAPI.selfId) "You: " else ""
+                val content = lastMessage.content?.takeIf { it.isNotBlank() }
+                    ?: if (lastMessage.attachments?.isNotEmpty() == true) "📷 Attachment" else ""
+                "$prefix$content"
+            }
+            else -> ""
         }
-        else -> ""
     }
 
-    val isUnread = remember(channel.id, channel.lastMessageID, StoatAPI.unreads) {
-        channel.id?.let { chId ->
-            channel.lastMessageID?.let { msgId ->
-                StoatAPI.unreads.hasUnread(chId, msgId, serverId = null)
-            }
-        } ?: false
-    }
+    val isUnread = channel.id?.let { chId ->
+        channel.lastMessageID?.let { msgId ->
+            StoatAPI.unreads.hasUnread(chId, msgId, serverId = null)
+        }
+    } ?: false
 
     val relativeTimestamp = remember(channel.lastMessageID) {
         formatRelativeTime(channel.lastMessageID)
@@ -546,7 +548,7 @@ private fun DirectMessageItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(72.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(ActionButtonShape)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick

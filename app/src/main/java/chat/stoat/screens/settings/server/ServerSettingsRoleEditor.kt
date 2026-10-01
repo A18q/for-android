@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -385,8 +386,9 @@ fun ServerSettingsRoleEditor(
         else null
     }
     val role = server?.roles?.get(roleId)
-    val elevated = roleId == DefaultRoleId || (server != null && role != null &&
-            canManageServerRole(server, role))
+    val elevated = remember(roleId, server, role) {
+        roleId == DefaultRoleId || (server != null && role != null && canManageServerRole(server, role))
+    }
     val editorCapabilities = capabilities?.let {
         if (roleId == DefaultRoleId || elevated) it
         else it.copy(canManageRoles = false, canManagePermissions = false)
@@ -707,9 +709,7 @@ private fun RolePreviewSurface(
                                 fontSize = MaterialTheme.typography.labelLarge.fontSize,
                                 lineHeight = MaterialTheme.typography.labelLarge.lineHeight,
                                 fontWeight = FontWeight.Bold,
-                                brush = roleBrush ?: Brush.linearGradient(
-                                    listOf(colourScheme.onSurface, colourScheme.onSurface)
-                                ),
+                                brush = roleBrush ?: SolidColor(colourScheme.onSurface),
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

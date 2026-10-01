@@ -10,4 +10,6 @@ object SqlStorage {
         StoatApplication.instance.applicationContext,
         "revolt.db"
     )
+
+    val database: Database by lazy { Database(driver) }
 }

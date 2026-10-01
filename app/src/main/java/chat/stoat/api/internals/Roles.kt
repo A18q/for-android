@@ -12,15 +12,6 @@ import kotlinx.datetime.Clock
 
 object Roles {
     // lowest rank = highest role
-    private fun highestRoleWithPredicate(roles: List<Role?>, predicate: (Role) -> Boolean): Role? {
-        return roles.filter { role ->
-            if (role == null) return@filter false
-            predicate(role)
-        }.minByOrNull { role ->
-            role?.rank ?: 0.0
-        }
-    }
-
     fun resolveHighestRole(
         serverId: String,
         userId: String,
@@ -29,17 +20,24 @@ object Roles {
     ): Role? {
         val server = StoatAPI.serverCache[serverId] ?: return null
         val member = StoatAPI.members.getMember(serverId, userId) ?: return null
+        val memberRoles = member.roles ?: return null
+        val serverRoles = server.roles ?: return null
 
-        val roles = member.roles?.map { roleId ->
-            server.roles?.get(roleId)
-        } ?: return null
+        var bestRole: Role? = null
+        var bestRank = Double.MAX_VALUE
 
-        return highestRoleWithPredicate(roles) { role ->
-            val hoistPredicate = if (hoisted) (role.hoist == true) else true
-            val colourPredicate = if (withColour) (role.colour != null) else true
-
-            hoistPredicate && colourPredicate
+        for (i in memberRoles.indices) {
+            val role = serverRoles[memberRoles[i]] ?: continue
+            if (hoisted && role.hoist != true) continue
+            if (withColour && role.colour == null) continue
+            val rank = role.rank ?: 0.0
+            if (rank < bestRank) {
+                bestRank = rank
+                bestRole = role
+            }
         }
+
+        return bestRole
     }
 
     fun inOrder(serverId: String, predicate: (Role) -> Boolean): List<Role> {
@@ -58,7 +56,7 @@ object Roles {
 
         member.roles?.forEach { roleId ->
             val role = server.roles?.get(roleId) ?: return@forEach
-            val permissions = role.permissions ?: PermissionDescription(0, 0)
+            val permissions = role.permissions ?: return@forEach
 
             calculated = calculated or permissions.a and permissions.d.inv()
         }

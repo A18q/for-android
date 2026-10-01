@@ -171,15 +171,24 @@ fun Modifier.folderGroupBackgrounds(
         val radius = size.width / 2 - inset
         val gap = RailItemGap.toPx()
 
-        layout.rows.values.groupBy { it.folderId }.forEach { (folderId, rows) ->
-            val style = styles[folderId] ?: return@forEach
+        styles.forEach { (folderId, style) ->
             val header = layout.rows[folderId]
-            if (rows.size == if (header != null) 1 else 0) return@forEach
+            var count = 0
+            var minTop = Float.POSITIVE_INFINITY
+            var maxBottom = Float.NEGATIVE_INFINITY
+            for (row in layout.rows.values) {
+                if (row.folderId == folderId) {
+                    count++
+                    if (row.top < minTop) minTop = row.top
+                    if (row.bottom > maxBottom) maxBottom = row.bottom
+                }
+            }
+            if (count == if (header != null) 1 else 0) return@forEach
 
             val last = layout.rows[style.lastMemberKey]
-            val top = header?.let { it.top + inset } ?: (rows.minOf { it.top } - radius * 2)
+            val top = header?.let { it.top + inset } ?: (minTop - radius * 2)
             val bottom = last?.let { it.bottom - gap - inset }
-                ?: (rows.maxOf { it.bottom } + radius * 2)
+                ?: (maxBottom + radius * 2)
 
             drawRoundRect(
                 color = style.colour,

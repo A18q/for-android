@@ -10,21 +10,39 @@ class StoatMarkdownFlavour(private val content: String) : GFMFlavourDescriptor()
     override fun createInlinesLexer(): MarkdownLexer = MarkdownLexer(SpoilerLexer())
 
     override val sequentialParserManager = object : SequentialParserManager() {
-        // We need to do it dynamically like this to ensure that this does not break with JB Markdown updates
         override fun getParserSequence(): List<SequentialParser> {
-            val upstream = super@StoatMarkdownFlavour.sequentialParserManager.getParserSequence()
-            val emphasisIndices = upstream.indices.filter { upstream[it] is EmphasisLikeParser }
-            check(emphasisIndices.size == 1) {
-                "Expected exactly one upstream emphasis parser, found ${emphasisIndices.size}"
-            }
-            val emphasisIndex = emphasisIndices.single()
-
-            return listOf(
-                MentionSequentialParser(content),
-                TimestampSequentialParser(content),
-                CustomEmoteSequentialParser(content),
-            ) + upstream.take(emphasisIndex) + SpoilerSequentialParser() +
-                    upstream.drop(emphasisIndex)
+            val result = ArrayList<SequentialParser>(4 + upstreamBeforeEmphasis.size + upstreamFromEmphasis.size)
+            result.add(MentionSequentialParser(content))
+            result.add(TimestampSequentialParser(content))
+            result.add(CustomEmoteSequentialParser(content))
+            result.addAll(upstreamBeforeEmphasis)
+            result.add(spoilerSequentialParser)
+            result.addAll(upstreamFromEmphasis)
+            return result
         }
+    }
+
+    companion object {
+        private val upstreamParsers: List<SequentialParser> by lazy {
+            GFMFlavourDescriptor().sequentialParserManager.getParserSequence()
+        }
+
+        private val emphasisIndex: Int by lazy {
+            val indices = upstreamParsers.indices.filter { upstreamParsers[it] is EmphasisLikeParser }
+            check(indices.size == 1) {
+                "Expected exactly one upstream emphasis parser, found ${indices.size}"
+            }
+            indices.single()
+        }
+
+        private val upstreamBeforeEmphasis: List<SequentialParser> by lazy {
+            upstreamParsers.subList(0, emphasisIndex)
+        }
+
+        private val upstreamFromEmphasis: List<SequentialParser> by lazy {
+            upstreamParsers.subList(emphasisIndex, upstreamParsers.size)
+        }
+
+        private val spoilerSequentialParser = SpoilerSequentialParser()
     }
 }

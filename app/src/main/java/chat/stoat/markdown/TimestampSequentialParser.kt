@@ -27,8 +27,7 @@ class TimestampSequentialParser(private val content: String) : SequentialParser 
                 }
 
                 if (lookahead.type == MarkdownTokenTypes.GT) {
-                    val innerText = content.substring(ltEnd, lookahead.start)
-                    if (isTimestamp(innerText)) {
+                    if (isTimestamp(content, ltEnd, lookahead.start)) {
                         result.withNode(SequentialParser.Node(iterator.index..lookahead.index + 1, TIMESTAMP_ELEMENT_TYPE))
                         iterator = lookahead.advance()
                         continue
@@ -42,16 +41,31 @@ class TimestampSequentialParser(private val content: String) : SequentialParser 
         return result.withFurtherProcessing(delegateIndices.get())
     }
 
-    private fun isTimestamp(inner: String): Boolean {
-        if (!inner.startsWith("t:")) return false
-        val rest = inner.removePrefix("t:")
-        val colonIdx = rest.indexOf(':')
+    private fun isTimestamp(content: CharSequence, start: Int, end: Int): Boolean {
+        val len = end - start
+        if (len < 3 || content[start] != 't' || content[start + 1] != ':') return false
+        val digitsStart = start + 2
+        var colonIdx = -1
+        for (i in digitsStart until end) {
+            if (content[i] == ':') {
+                colonIdx = i
+                break
+            }
+        }
         return if (colonIdx == -1) {
-            rest.all { it.isDigit() } && rest.isNotEmpty()
+            if (digitsStart >= end) false
+            else {
+                for (i in digitsStart until end) {
+                    if (!content[i].isDigit()) return false
+                }
+                true
+            }
         } else {
-            val digits = rest.substring(0, colonIdx)
-            val style = rest.substring(colonIdx + 1)
-            digits.all { it.isDigit() } && digits.isNotEmpty() && style.length == 1
+            if (digitsStart >= colonIdx) return false
+            for (i in digitsStart until colonIdx) {
+                if (!content[i].isDigit()) return false
+            }
+            (end - colonIdx - 1) == 1
         }
     }
 }

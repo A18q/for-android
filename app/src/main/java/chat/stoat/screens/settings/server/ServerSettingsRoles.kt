@@ -71,6 +71,7 @@ import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.Role
 import chat.stoat.internals.extensions.rememberServerPermissions
 import chat.stoat.internals.server.canManageServerRole
+import chat.stoat.internals.server.resolveOwnTopRoleRank
 import chat.stoat.internals.server.serverRoleCapabilities
 import chat.stoat.settings.dsl.SettingsPage
 import com.bumptech.glide.integration.compose.CrossFade
@@ -185,6 +186,9 @@ fun ServerSettingsRoles(
             serverRoleCapabilities(server, permissions!!)
         } else null
     }
+    val ownTopRank = remember(server, StoatAPI.selfId) {
+        if (server != null) resolveOwnTopRoleRank(server) else Double.MAX_VALUE
+    }
     val entries = remember(server?.roles) {
         server?.roles.orEmpty()
             .map { RoleEntry(it.key, it.value) }
@@ -195,7 +199,6 @@ fun ServerSettingsRoles(
     val hapticFeedback = LocalHapticFeedback.current
     var dragStartOrder by remember(serverId) { mutableStateOf<List<String>>(emptyList()) }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        val currentServer = server ?: return@rememberReorderableLazyListState
         if (capabilities?.canManageRoles != true || viewModel.reorderingRoleId != null) {
             return@rememberReorderableLazyListState
         }
@@ -210,8 +213,8 @@ fun ServerSettingsRoles(
 
         if (
             fromIndex == toIndex ||
-            !canManageServerRole(currentServer, fromEntry.role) ||
-            !canManageServerRole(currentServer, toEntry.role)
+            !canManageServerRole(fromEntry.role, ownTopRank) ||
+            !canManageServerRole(toEntry.role, ownTopRank)
         ) return@rememberReorderableLazyListState
 
         displayedEntries = displayedEntries.toMutableList().apply {
@@ -357,7 +360,7 @@ fun ServerSettingsRoles(
             }
 
             itemsIndexed(displayedEntries, key = { _, entry -> entry.id }) { index, entry ->
-                val elevated = canManageServerRole(server, entry.role)
+                val elevated = canManageServerRole(entry.role, ownTopRank)
                 ReorderableItem(
                     state = reorderableState,
                     key = entry.id,
@@ -366,9 +369,9 @@ fun ServerSettingsRoles(
                     val canDrag = capabilities.canManageRoles && elevated &&
                             viewModel.reorderingRoleId == null
                     val canMoveUp = canDrag && index > 0 &&
-                            canManageServerRole(server, displayedEntries[index - 1].role)
+                            canManageServerRole(displayedEntries[index - 1].role, ownTopRank)
                     val canMoveDown = canDrag && index < displayedEntries.lastIndex &&
-                            canManageServerRole(server, displayedEntries[index + 1].role)
+                            canManageServerRole(displayedEntries[index + 1].role, ownTopRank)
                     val dragHandleModifier = if (canDrag) {
                         Modifier.draggableHandle(
                             onDragStarted = {
@@ -636,18 +639,20 @@ private fun RoleListRow(
             .shadow(elevation, shape)
             .clip(shape)
             .semantics {
-                customActions = buildList {
-                    if (canMoveUp) {
-                        add(CustomAccessibilityAction(moveUpLabel) {
-                            onMoveUp()
-                            true
-                        })
-                    }
-                    if (canMoveDown) {
-                        add(CustomAccessibilityAction(moveDownLabel) {
-                            onMoveDown()
-                            true
-                        })
+                if (canMoveUp || canMoveDown) {
+                    customActions = buildList {
+                        if (canMoveUp) {
+                            add(CustomAccessibilityAction(moveUpLabel) {
+                                onMoveUp()
+                                true
+                            })
+                        }
+                        if (canMoveDown) {
+                            add(CustomAccessibilityAction(moveDownLabel) {
+                                onMoveDown()
+                                true
+                            })
+                        }
                     }
                 }
             }

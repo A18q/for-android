@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,38 +99,43 @@ fun Reaction(
 
             Spacer(Modifier.width(8.dp))
 
-            members.size.let { number ->
-                number.toString()
-                    .mapIndexed { index, c ->
-                        ReactionDigit(
-                            digitChar = c,
-                            fullNumber = number,
-                            place = index
-                        )
-                    }
-                    .forEach {
-                        AnimatedContent(
-                            targetState = it,
-                            transitionSpec = {
-                                if (targetState > initialState) {
-                                    slideInVertically { -it } togetherWith slideOutVertically { it }
-                                } else {
-                                    slideInVertically { it } togetherWith slideOutVertically { -it }
-                                }
-                            },
-                            label = "Reaction count",
-                        ) { target ->
-                            Text(
-                                text = target.digitChar.toString(),
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    fontFeatureSettings = "tnum"
-                                )
-                            )
+            val number = members.size
+            val digits = remember(number) {
+                number.toString().mapIndexed { index, c ->
+                    ReactionDigit(
+                        digitChar = c,
+                        fullNumber = number,
+                        place = index
+                    )
+                }
+            }
+            val baseTypography = MaterialTheme.typography.bodyLarge
+            val digitTextStyle = remember(baseTypography) {
+                baseTypography.copy(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    fontFeatureSettings = "tnum"
+                )
+            }
+
+            for (digit in digits) {
+                AnimatedContent(
+                    targetState = digit,
+                    transitionSpec = {
+                        if (targetState > initialState) {
+                            slideInVertically { -it } togetherWith slideOutVertically { it }
+                        } else {
+                            slideInVertically { it } togetherWith slideOutVertically { -it }
                         }
-                    }
+                    },
+                    label = "Reaction count",
+                ) { target ->
+                    Text(
+                        text = target.digitChar.toString(),
+                        style = digitTextStyle
+                    )
+                }
             }
         }
     }
