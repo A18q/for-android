@@ -2,6 +2,7 @@ package chat.stoat.sheets
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -127,6 +128,11 @@ fun ServerContextSheet(
     var newCategoryName by remember { mutableStateOf("") }
     val categoryFocusRequester = remember { FocusRequester() }
     val canManageChannels = isOwner || (permissions != null && (permissions!!.hasPermission(PermissionBit.ManageChannel) || permissions!!.hasPermission(PermissionBit.ManageServer)))
+    var showInviteView by remember { mutableStateOf(false) }
+
+    BackHandler(showInviteView) {
+        showInviteView = false
+    }
 
     // — Leave confirmation dialog —
     if (showLeaveConfirmation) {
@@ -345,53 +351,49 @@ fun ServerContextSheet(
     }
 
     // — Sheet body —
-    Column(
-        modifier = Modifier
-            .verticalScroll(rememberScrollState())
-            .background(SheetBg)
-    ) {
-        // Server header card
+    if (showInviteView) {
+        ServerInviteContent(
+            serverId = serverId,
+            onBack = { showInviteView = false },
+            onDismiss = { onHideSheet() }
+        )
+    } else {
         Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(top = 8.dp, start = 16.dp, end = 16.dp, bottom = 4.dp)
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .background(SheetBg)
         ) {
-            ServerOverview(server)
+            // Server header card
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(top = 8.dp, start = 16.dp, end = 16.dp, bottom = 4.dp)
+            ) {
+                ServerOverview(server)
 
-            if (!server.description.isNullOrBlank()) {
-                SelectionContainer {
-                    ChatMarkdown(
-                        content = server.description!!,
-                        serverId = serverId,
-                    )
-                }
-            }
-        }
-
-        HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp)
-        Spacer(Modifier.height(4.dp))
-
-        // ─── INVITE PEOPLE ───
-        SheetButton(
-            leadingContent = {
-                Icon(painter = painterResource(R.drawable.ic_group_add_24dp), contentDescription = null)
-            },
-            headlineContent = { Text("Invite People") },
-            onClick = {
-                coroutineScope.launch {
-                    // Fire InviteDialog via the channel — navigate to first text channel
-                    val firstChannel = server.channels
-                        ?.mapNotNull { StoatAPI.channelCache[it] }
-                        ?.firstOrNull { it.channelType == chat.stoat.core.model.schemas.ChannelType.TextChannel }
-                    if (firstChannel?.id != null) {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, "$STOAT_WEB_APP/server/$serverId/channel/${firstChannel.id}".toUri())
+                if (!server.description.isNullOrBlank()) {
+                    SelectionContainer {
+                        ChatMarkdown(
+                            content = server.description!!,
+                            serverId = serverId,
                         )
                     }
-                    onHideSheet()
                 }
-            },
-            special = true
-        )
+            }
+
+            HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp)
+            Spacer(Modifier.height(4.dp))
+
+            // ─── INVITE PEOPLE ───
+            SheetButton(
+                leadingContent = {
+                    Icon(painter = painterResource(R.drawable.ic_group_add_24dp), contentDescription = null)
+                },
+                headlineContent = { Text("Invite People") },
+                onClick = {
+                    showInviteView = true
+                },
+                special = true
+            )
 
         // ─── NOTIFICATION SETTINGS ───
         SheetButton(
@@ -590,6 +592,7 @@ fun ServerContextSheet(
         }
 
         Spacer(Modifier.height(24.dp))
+        }
     }
 }
 

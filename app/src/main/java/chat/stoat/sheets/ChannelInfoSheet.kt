@@ -67,17 +67,27 @@ fun ChannelInfoSheet(channelId: String, onHideSheet: suspend () -> Unit) {
     }
 
     if (inviteDialogShown) {
-        Dialog(
-            onDismissRequest = {
-                inviteDialogShown = false
-            }
-        ) {
-            InviteDialog(
-                channelId = channelId,
+        if (channel?.server != null) {
+            ServerInviteSheet(
+                serverId = channel.server!!,
+                initialChannelId = channelId,
                 onDismissRequest = {
                     inviteDialogShown = false
                 }
             )
+        } else {
+            Dialog(
+                onDismissRequest = {
+                    inviteDialogShown = false
+                }
+            ) {
+                InviteDialog(
+                    channelId = channelId,
+                    onDismissRequest = {
+                        inviteDialogShown = false
+                    }
+                )
+            }
         }
     }
 
