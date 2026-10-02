@@ -135,12 +135,46 @@ fun UserButtons(
         when (user.relationship) {
             "None" -> {
                 if (user.bot == null) {
-                    // Discord 1:1 layout: Minimalist icon Message button + Add Friend button
+                    // Giant Discord Add Friend Button
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    friendUser("${user.username}#${user.discriminator}")
+                                } catch (e: Exception) {
+                                    if (e.message == "NoEffect") return@launch
+                                    logcat(LogPriority.ERROR) { e.asLog() }
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF5865F2),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_person_add_24dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.user_info_sheet_add_friend),
+                            fontSize = 14.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                        )
+                    }
+
+                    // Small square Message button
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(42.dp)
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                            .background(Color(0xFF35373C))
+                            .background(Color(0xFF2B2D31))
                             .clickable {
                                 scope.launch {
                                     try {
@@ -171,47 +205,14 @@ fun UserButtons(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-
-                    // Compact Discord Add Friend Button
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                try {
-                                    friendUser("${user.username}#${user.discriminator}")
-                                } catch (e: Exception) {
-                                    if (e.message == "NoEffect") return@launch
-                                    logcat(LogPriority.ERROR) { e.asLog() }
-                                }
-                            }
-                        },
+                } else {
+                    // Bot — wide Message button
+                    Row(
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF5865F2),
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_person_add_24dp),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(R.string.user_info_sheet_add_friend),
-                            fontSize = 13.sp,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                        )
-                    }
-                } else {
-                    // Bot — minimalist icon message button only
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
+                            .height(42.dp)
                             .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                            .background(Color(0xFF35373C))
+                            .background(Color(0xFF2B2D31))
                             .clickable {
                                 scope.launch {
                                     try {
@@ -227,41 +228,21 @@ fun UserButtons(
                                     }
                                 }
                             },
-                        contentAlignment = Alignment.Center
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_chat_24dp),
                             contentDescription = stringResource(R.string.user_info_sheet_send_message),
-                            tint = Color(0xFFDBDEE1),
-                            modifier = Modifier.size(20.dp)
+                            tint = Color(0xFFF2F3F5),
+                            modifier = Modifier.size(18.dp)
                         )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(
-                            8.dp,
-                            alignment = Alignment.Start
-                        ),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .weight(1f)
-                            .animateContentSize()
-                            .clip(MaterialTheme.shapes.small)
-                            .clickable { botEasterEgg = true }
-                            .padding(8.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_smart_toy_24dp),
-                            contentDescription = null,
-                            tint = Color(0xFF949BA4)
-                        )
+                        Spacer(Modifier.width(8.dp))
                         Text(
-                            if (botEasterEgg) {
-                                stringResource(R.string.user_info_sheet_user_is_bot_easter_egg)
-                            } else {
-                                stringResource(R.string.user_info_sheet_user_is_bot)
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF949BA4)
+                            text = "Message",
+                            color = Color(0xFFF2F3F5),
+                            fontSize = 14.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                         )
                     }
                 }
@@ -284,59 +265,96 @@ fun UserButtons(
             }
 
             "Friend" -> {
-                Box(
+                // Wide Message Button
+                Row(
                     modifier = Modifier
-                        .size(38.dp)
+                        .weight(1f)
+                        .height(42.dp)
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .background(Color(0xFF35373C))
+                        .background(Color(0xFF2B2D31))
                         .clickable {
                             scope.launch {
-                                val dm = openDM(user.id!!)
-                                if (dm.id != null) {
-                                    if (StoatAPI.channelCache[dm.id] == null)
-                                        StoatAPI.channelCache[dm.id!!] = dm
-                                    ActionChannel.send(Action.SwitchChannel(dm.id!!))
-                                    dismissSheet()
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        resources.getString(R.string.user_info_sheet_failed_to_open_dm),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                try {
+                                    val dm = openDM(user.id!!)
+                                    if (dm.id != null) {
+                                        if (StoatAPI.channelCache[dm.id] == null)
+                                            StoatAPI.channelCache[dm.id!!] = dm
+                                        ActionChannel.send(Action.SwitchChannel(dm.id!!))
+                                        dismissSheet()
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            resources.getString(R.string.user_info_sheet_failed_to_open_dm),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                } catch (e: Exception) {
+                                    logcat(LogPriority.ERROR) { e.asLog() }
                                 }
                             }
                         },
-                    contentAlignment = Alignment.Center
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_chat_24dp),
                         contentDescription = stringResource(R.string.user_info_sheet_send_message),
-                        tint = Color(0xFFDBDEE1),
-                        modifier = Modifier.size(20.dp)
+                        tint = Color(0xFFF2F3F5),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Message",
+                        color = Color(0xFFF2F3F5),
+                        fontSize = 14.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                     )
                 }
 
-                // Friends badge pill indicator
+                // Wide Call Button
                 Row(
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp)
+                        .height(42.dp)
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                         .background(Color(0xFF2B2D31))
-                        .padding(horizontal = 12.dp),
+                        .clickable {
+                            scope.launch {
+                                try {
+                                    val dm = openDM(user.id!!)
+                                    if (dm.id != null) {
+                                        if (StoatAPI.channelCache[dm.id] == null)
+                                            StoatAPI.channelCache[dm.id!!] = dm
+                                        dismissSheet()
+                                        ActionChannel.send(Action.SwitchChannel(dm.id!!))
+                                        ActionChannel.send(Action.OpenVoiceChannelOverlay(dm.id!!))
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            resources.getString(R.string.user_info_sheet_failed_to_open_dm),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                } catch (e: Exception) {
+                                    logcat(LogPriority.ERROR) { e.asLog() }
+                                    Toast.makeText(context, "Failed to start call", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_check_24dp),
-                        contentDescription = null,
-                        tint = Color(0xFF23A55A),
-                        modifier = Modifier.size(16.dp)
+                        painter = painterResource(R.drawable.ic_call_24dp__fill),
+                        contentDescription = "Call",
+                        tint = Color(0xFFF2F3F5),
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Friends",
-                        color = Color(0xFFDBDEE1),
-                        fontSize = 13.sp,
+                        text = "Call",
+                        color = Color(0xFFF2F3F5),
+                        fontSize = 14.sp,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                     )
                 }
@@ -418,7 +436,7 @@ fun UserButtons(
             "BlockedOther" -> Box(Modifier.weight(1f))
         }
 
-        if (user.relationship != "User") {
+        if (user.relationship != "User" && user.relationship != "Friend") {
             Row { // Prevent the dropdown menu from counting towards arrangement spacing
                 DropdownMenu(
                     expanded = menuOpen,
@@ -622,14 +640,19 @@ fun UserButtons(
                     }
                 }
 
-                IconButton(
-                    onClick = {
-                        menuOpen = true
-                    }
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(Color(0xFF2B2D31))
+                        .clickable { menuOpen = true },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_more_vert_24dp),
-                        contentDescription = stringResource(R.string.menu)
+                        contentDescription = stringResource(R.string.menu),
+                        tint = Color(0xFFDBDEE1),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }

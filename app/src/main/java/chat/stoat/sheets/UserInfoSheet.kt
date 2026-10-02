@@ -30,11 +30,26 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import chat.stoat.api.routes.user.blockUser
+import chat.stoat.api.routes.user.unblockUser
+import chat.stoat.api.routes.user.unfriendUser
+import chat.stoat.composables.screens.chat.drawer.ServerIconImage
+import chat.stoat.dialogs.MemberModerationAction
+import chat.stoat.dialogs.MemberModerationDialog
+import chat.stoat.dialogs.memberModerationPermissions
+import logcat.LogPriority
+import logcat.asLog
+import logcat.logcat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -126,6 +141,7 @@ fun UserInfoSheet(
     var noteText by remember(userId) { mutableStateOf("") }
     var noteSaveState by remember { mutableStateOf<NoteSaveState>(NoteSaveState.Idle) }
     var lastGoodNoteText by remember(userId) { mutableStateOf("") }
+    var moderationAction by remember { mutableStateOf<MemberModerationAction?>(null) }
 
     LaunchedEffect(userId) {
         if (!isSelf) {
@@ -187,6 +203,16 @@ fun UserInfoSheet(
         )
         Spacer(Modifier.height(20.dp))
         return
+    }
+
+    if (serverId != null && moderationAction != null) {
+        MemberModerationDialog(
+            action = moderationAction!!,
+            serverId = serverId,
+            user = user,
+            dismissUserSheet = dismissSheet,
+            onDismiss = { moderationAction = null },
+        )
     }
 
     Column(
@@ -281,6 +307,199 @@ fun UserInfoSheet(
                     DiscordBadgeCapsule(badges = badges)
                 }
             }
+
+            // ─── Discord Sheet Drag Handle ───
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 10.dp)
+                    .width(36.dp)
+                    .height(4.5.dp)
+                    .clip(RoundedCornerShape(2.5.dp))
+                    .background(Color.White.copy(alpha = 0.8f))
+            )
+
+            // ─── Discord Top-Right Action Buttons (Banner) ───
+            if (!isSelf && user.id != null) {
+                var bannerMenuOpen by remember { mutableStateOf(false) }
+                var friendMenuOpen by remember { mutableStateOf(false) }
+                val clipboard = LocalClipboardManager.current
+                val moderationPermissions = serverId?.let { memberModerationPermissions(it, user.id) }
+
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (user.relationship == "Friend") {
+                        Box {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .clickable { friendMenuOpen = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_person_24dp),
+                                    contentDescription = "Friend Actions",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = friendMenuOpen,
+                                onDismissRequest = { friendMenuOpen = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.user_info_sheet_remove_friend)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_person_off_24dp),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    },
+                                    onClick = {
+                                        friendMenuOpen = false
+                                        scope.launch {
+                                            try {
+                                                unfriendUser(user.id!!)
+                                            } catch (e: Exception) {
+                                                if (e.message != "NoEffect") logcat(LogPriority.ERROR) { e.asLog() }
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.55f))
+                                .clickable { bannerMenuOpen = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_more_vert_24dp),
+                                contentDescription = stringResource(R.string.menu),
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = bannerMenuOpen,
+                            onDismissRequest = { bannerMenuOpen = false }
+                        ) {
+                            if (user.relationship == "Blocked") {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.user_info_sheet_unblock)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_block_24dp),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    onClick = {
+                                        bannerMenuOpen = false
+                                        scope.launch {
+                                            try { unblockUser(user.id!!) }
+                                            catch (e: Exception) { if (e.message != "NoEffect") logcat(LogPriority.ERROR) { e.asLog() } }
+                                        }
+                                    }
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.user_info_sheet_block)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_block_24dp),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    },
+                                    onClick = {
+                                        bannerMenuOpen = false
+                                        scope.launch {
+                                            try { blockUser(user.id!!) }
+                                            catch (e: Exception) { if (e.message != "NoEffect") logcat(LogPriority.ERROR) { e.asLog() } }
+                                        }
+                                    }
+                                )
+                            }
+
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.user_info_sheet_copy_id)) },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_content_copy_24dp),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                onClick = {
+                                    bannerMenuOpen = false
+                                    clipboard.setText(AnnotatedString(user.id!!))
+                                    Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+                                }
+                            )
+
+                            if (serverId != null) {
+                                if (moderationPermissions?.canKick == true) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = stringResource(R.string.member_moderation_kick),
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_logout_24dp),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        onClick = {
+                                            bannerMenuOpen = false
+                                            moderationAction = MemberModerationAction.Kick
+                                        }
+                                    )
+                                }
+                                if (moderationPermissions?.canBan == true) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = stringResource(R.string.member_moderation_ban),
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_gavel_24dp),
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        onClick = {
+                                            bannerMenuOpen = false
+                                            moderationAction = MemberModerationAction.Ban
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // ─── 2. Identity Block (Display Name, Handle, Pronouns, Custom Status) ───
@@ -337,6 +556,41 @@ fun UserInfoSheet(
                         fontWeight = FontWeight.Medium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            val mutualServers = remember(userId) {
+                StoatAPI.serverCache.values.filter { srv ->
+                    srv.id != null && StoatAPI.members.hasMember(srv.id!!, userId)
+                }
+            }
+            if (mutualServers.isNotEmpty() && !isSelf) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy((-6).dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        mutualServers.take(4).forEach { srv ->
+                            ServerIconImage(
+                                server = srv,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .border(1.5.dp, DiscordDarkCanvas, CircleShape)
+                                    .clip(CircleShape),
+                                cornerRadius = 10.dp
+                            )
+                        }
+                    }
+                    Text(
+                        text = "${mutualServers.size} Mutual Server${if (mutualServers.size > 1) "s" else ""}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DiscordTextNormal
                     )
                 }
             }
