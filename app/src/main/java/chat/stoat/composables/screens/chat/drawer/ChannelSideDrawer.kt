@@ -121,13 +121,49 @@ import chat.stoat.sheets.ColourPickerSheet
 import chat.stoat.sheets.ServerFolderSheet
 import chat.stoat.sheets.colourPickerString
 import chat.stoat.sheets.colourPickerValue
+import chat.stoat.sheets.CategoryContextSheet
 import chat.stoat.ui.theme.FragmentMono
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
 import logcat.asLog
 import logcat.logcat
+import android.widget.Toast
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import chat.stoat.api.internals.PermissionBit
+import chat.stoat.api.internals.ULID
+import chat.stoat.api.internals.hasPermission
+import chat.stoat.api.routes.server.createChannelInServer
+import chat.stoat.api.routes.server.patchServer
+import chat.stoat.internals.extensions.rememberServerPermissions
+import chat.stoat.internals.server.ServerChannelListEntry
+import chat.stoat.internals.server.ServerChannelSection
+import chat.stoat.internals.server.UncategorisedChannelSectionId
+import chat.stoat.internals.server.flattenChannelSections
+import chat.stoat.internals.server.moveServerChannelEntry
+import chat.stoat.internals.server.serverChannelSections
+import chat.stoat.internals.server.toServerCategories
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -294,6 +330,17 @@ fun ChannelSideDrawer(
     }
 
     var channelContextSheetTarget by remember { mutableStateOf<String?>(null) }
+    var categoryContextSheetTarget by remember { mutableStateOf<String?>(null) }
+    var createChannelTargetCategory by remember { mutableStateOf<String?>(null) }
+    var showCreateChannelDialog by remember { mutableStateOf(false) }
+    var showCreateCategoryDialog by remember { mutableStateOf(false) }
+    var showEmptySpaceContextMenu by remember { mutableStateOf(false) }
+    var newChannelName by remember { mutableStateOf("") }
+    var newChannelType by remember { mutableStateOf("Text") }
+    var newCategoryName by remember { mutableStateOf("") }
+    var collapsedCategoryIds by remember(currentServer) { mutableStateOf(setOf<String>()) }
+    val serverPermissions by rememberServerPermissions(currentServer.orEmpty())
+    val canManageServerChannels = currentServer != null && (StoatAPI.serverCache[currentServer]?.owner == StoatAPI.selfId || (serverPermissions != null && (serverPermissions!!.hasPermission(PermissionBit.ManageChannel) || serverPermissions!!.hasPermission(PermissionBit.ManageServer))))
     var showSelfProfileSheet by remember { mutableStateOf(false) }
 
     if (showSelfProfileSheet && StoatAPI.selfId != null) {
@@ -330,6 +377,298 @@ fun ChannelSideDrawer(
                     channelContextSheetTarget = null
                 }
             )
+        }
+    }
+
+    if (categoryContextSheetTarget != null && currentServer != null) {
+        val catSheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            sheetState = catSheetState,
+            onDismissRequest = { categoryContextSheetTarget = null }
+        ) {
+            CategoryContextSheet(
+                serverId = currentServer,
+                categoryId = categoryContextSheetTarget!!,
+                onHideSheet = {
+                    catSheetState.hide()
+                    categoryContextSheetTarget = null
+                },
+                isCollapsed = categoryContextSheetTarget in collapsedCategoryIds,
+                onToggleCollapse = {
+                    val id = categoryContextSheetTarget ?: return@CategoryContextSheet
+                    collapsedCategoryIds = if (id in collapsedCategoryIds) {
+                        collapsedCategoryIds - id
+                    } else {
+                        collapsedCategoryIds + id
+                    }
+                },
+                onOpenCreateChannel = {
+                    createChannelTargetCategory = categoryContextSheetTarget
+                    showCreateChannelDialog = true
+                }
+            )
+        }
+    }
+
+    if (showCreateCategoryDialog && currentServer != null) {
+        val focusRequester = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+        }
+        AlertDialog(
+            onDismissRequest = {
+                showCreateCategoryDialog = false
+                newCategoryName = ""
+            },
+            containerColor = Color(0xFF2B2D31),
+            title = {
+                Text(
+                    text = "Create Category",
+                    color = Color(0xFFF2F3F5),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = newCategoryName,
+                    onValueChange = { newCategoryName = it },
+                    label = { Text("Category Name", color = Color(0xFF949BA4)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (newCategoryName.isNotBlank()) {
+                                scope.launch {
+                                    val srv = StoatAPI.serverCache[currentServer]
+                                    if (srv != null) {
+                                        val sections = serverChannelSections(srv) + ServerChannelSection(
+                                            id = ULID.makeNext(),
+                                            title = newCategoryName.trim(),
+                                            channelIds = emptyList()
+                                        )
+                                        patchServer(currentServer, categories = sections.toServerCategories())
+                                    }
+                                    newCategoryName = ""
+                                    showCreateCategoryDialog = false
+                                }
+                            }
+                        }
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color(0xFFF2F3F5),
+                        unfocusedTextColor = Color(0xFFF2F3F5),
+                        focusedBorderColor = Color(0xFF5865F2),
+                        unfocusedBorderColor = Color(0xFF949BA4),
+                        cursorColor = Color(0xFF5865F2)
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newCategoryName.isNotBlank()) {
+                            scope.launch {
+                                val srv = StoatAPI.serverCache[currentServer]
+                                if (srv != null) {
+                                    val sections = serverChannelSections(srv) + ServerChannelSection(
+                                        id = ULID.makeNext(),
+                                        title = newCategoryName.trim(),
+                                        channelIds = emptyList()
+                                    )
+                                    patchServer(currentServer, categories = sections.toServerCategories())
+                                }
+                                newCategoryName = ""
+                                showCreateCategoryDialog = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5865F2)),
+                    enabled = newCategoryName.isNotBlank()
+                ) {
+                    Text("Create Category", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showCreateCategoryDialog = false
+                    newCategoryName = ""
+                }) {
+                    Text("Cancel", color = Color(0xFF949BA4))
+                }
+            }
+        )
+    }
+
+    if (showCreateChannelDialog && currentServer != null) {
+        val channelFocusRequester = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            channelFocusRequester.requestFocus()
+        }
+        AlertDialog(
+            onDismissRequest = {
+                showCreateChannelDialog = false
+                newChannelName = ""
+                createChannelTargetCategory = null
+            },
+            containerColor = Color(0xFF2B2D31),
+            title = {
+                Text(
+                    text = "Create Channel",
+                    color = Color(0xFFF2F3F5),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1E1F22)),
+                    ) {
+                        listOf("Text" to R.drawable.ic_tag_24dp, "Voice" to R.drawable.ic_volume_up_24dp).forEach { (type, icon) ->
+                            val selected = newChannelType == type
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) Color(0xFF5865F2) else Color.Transparent)
+                                    .clickable { newChannelType = type }
+                                    .padding(vertical = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    painter = painterResource(icon),
+                                    contentDescription = null,
+                                    tint = if (selected) Color.White else Color(0xFF949BA4),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = type,
+                                    color = if (selected) Color.White else Color(0xFF949BA4),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = newChannelName,
+                        onValueChange = { newChannelName = it },
+                        label = { Text("Channel Name", color = Color(0xFF949BA4)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                if (newChannelName.isNotBlank()) {
+                                    scope.launch {
+                                        createChannelInServer(
+                                            serverId = currentServer,
+                                            name = newChannelName.trim(),
+                                            type = newChannelType,
+                                            categoryId = createChannelTargetCategory
+                                        )
+                                        newChannelName = ""
+                                        createChannelTargetCategory = null
+                                        showCreateChannelDialog = false
+                                    }
+                                }
+                            }
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(channelFocusRequester),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color(0xFFF2F3F5),
+                            unfocusedTextColor = Color(0xFFF2F3F5),
+                            focusedBorderColor = Color(0xFF5865F2),
+                            unfocusedBorderColor = Color(0xFF949BA4),
+                            cursorColor = Color(0xFF5865F2)
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newChannelName.isNotBlank()) {
+                            scope.launch {
+                                createChannelInServer(
+                                    serverId = currentServer,
+                                    name = newChannelName.trim(),
+                                    type = newChannelType,
+                                    categoryId = createChannelTargetCategory
+                                )
+                                newChannelName = ""
+                                createChannelTargetCategory = null
+                                showCreateChannelDialog = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5865F2)),
+                    enabled = newChannelName.isNotBlank()
+                ) {
+                    Text("Create Channel", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showCreateChannelDialog = false
+                    newChannelName = ""
+                    createChannelTargetCategory = null
+                }) {
+                    Text("Cancel", color = Color(0xFF949BA4))
+                }
+            }
+        )
+    }
+
+    if (showEmptySpaceContextMenu && currentServer != null) {
+        val emptySheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            sheetState = emptySheetState,
+            onDismissRequest = { showEmptySpaceContextMenu = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp)
+            ) {
+                if (canManageServerChannels) {
+                    chat.stoat.composables.generic.SheetButton(
+                        headlineContent = { Text("Create Channel") },
+                        leadingContent = {
+                            Icon(painter = painterResource(R.drawable.ic_add_24dp), contentDescription = null)
+                        },
+                        onClick = {
+                            scope.launch {
+                                emptySheetState.hide()
+                                showEmptySpaceContextMenu = false
+                                createChannelTargetCategory = null
+                                showCreateChannelDialog = true
+                            }
+                        }
+                    )
+                    chat.stoat.composables.generic.SheetButton(
+                        headlineContent = { Text("Create Category") },
+                        leadingContent = {
+                            Icon(painter = painterResource(R.drawable.ic_folder_24dp), contentDescription = null)
+                        },
+                        onClick = {
+                            scope.launch {
+                                emptySheetState.hide()
+                                showEmptySpaceContextMenu = false
+                                showCreateCategoryDialog = true
+                            }
+                        }
+                    )
+                }
+            }
         }
     }
 
@@ -734,12 +1073,28 @@ fun ChannelSideDrawer(
                 )
             } else {
                 ServerChannelListRenderer(
-                    categorisedChannels,
-                    currentDestination,
-                    onDestinationChanged,
-                    drawerState,
-                    channelListState,
+                    categorisedChannels = categorisedChannels,
+                    currentDestination = currentDestination,
+                    onDestinationChanged = onDestinationChanged,
+                    drawerState = drawerState,
+                    channelListState = channelListState,
                     onOpenChannelContextSheet = { channelContextSheetTarget = it },
+                    onOpenCategoryContextSheet = { categoryContextSheetTarget = it },
+                    onOpenCreateChannelForCategory = {
+                        createChannelTargetCategory = it
+                        showCreateChannelDialog = true
+                    },
+                    onOpenEmptySpaceContextMenu = {
+                        showEmptySpaceContextMenu = true
+                    },
+                    collapsedCategoryIds = collapsedCategoryIds,
+                    onToggleCategory = { catId ->
+                        collapsedCategoryIds = if (catId in collapsedCategoryIds) {
+                            collapsedCategoryIds - catId
+                        } else {
+                            collapsedCategoryIds + catId
+                        }
+                    },
                     serverId = currentServer
                 )
             }
@@ -922,6 +1277,7 @@ fun ColumnScope.DirectMessagesChannelListRenderer(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ColumnScope.ServerChannelListRenderer(
     categorisedChannels: List<CategorisedChannelList>?,
@@ -930,9 +1286,111 @@ fun ColumnScope.ServerChannelListRenderer(
     drawerState: DrawerState?,
     channelListState: LazyListState,
     onOpenChannelContextSheet: (String) -> Unit,
+    onOpenCategoryContextSheet: (String) -> Unit,
+    onOpenCreateChannelForCategory: (String) -> Unit,
+    onOpenEmptySpaceContextMenu: () -> Unit,
+    collapsedCategoryIds: Set<String>,
+    onToggleCategory: (String) -> Unit,
     serverId: String
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val server = StoatAPI.serverCache[serverId]
+    val permissions by rememberServerPermissions(serverId)
+    val isOwner = server?.owner == StoatAPI.selfId
+    val canManage = isOwner || (permissions != null && (permissions!!.hasPermission(PermissionBit.ManageChannel) || permissions!!.hasPermission(PermissionBit.ManageServer)))
+
+    val sourceSections = remember(server) { server?.let { serverChannelSections(it) }.orEmpty() }
+    var displayedSections by remember(serverId) { mutableStateOf(sourceSections) }
+    LaunchedEffect(sourceSections) {
+        displayedSections = sourceSections
+    }
+
+    var hasMovedDuringDrag by remember { mutableStateOf(false) }
+    var dragStartSections by remember(serverId) { mutableStateOf<List<ServerChannelSection>?>(null) }
+    var hoverJob by remember { mutableStateOf<Job?>(null) }
+    var hoveredCategoryId by remember { mutableStateOf<String?>(null) }
+
+    val entries = remember(displayedSections, collapsedCategoryIds) {
+        displayedSections.flatMap { section ->
+            val isUncategorized = section.id == UncategorisedChannelSectionId
+            val sectionHeader = if (isUncategorized) emptyList() else listOf(ServerChannelListEntry.Section(section.id))
+            val isCollapsed = !isUncategorized && section.id in collapsedCategoryIds
+            if (isCollapsed) {
+                sectionHeader
+            } else {
+                sectionHeader + section.channelIds.map { channelId ->
+                    ServerChannelListEntry.Channel(section.id, channelId)
+                }
+            }
+        }
+    }
+
+    val reorderableState = rememberReorderableLazyListState(channelListState) { from, to ->
+        if (!canManage) return@rememberReorderableLazyListState
+        val fullEntries = displayedSections.flattenChannelSections()
+        val fullFromIndex = fullEntries.indexOfFirst { it.key == from.key }
+        val fullToIndex = fullEntries.indexOfFirst { it.key == to.key }
+        if (fullFromIndex < 0 || fullToIndex < 0 || fullFromIndex == fullToIndex) return@rememberReorderableLazyListState
+
+        val moved = moveServerChannelEntry(displayedSections, fullFromIndex, fullToIndex)
+        if (moved != displayedSections) {
+            displayedSections = moved
+            hasMovedDuringDrag = true
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+
+            val toEntry = fullEntries[fullToIndex]
+            val targetCatId = when (toEntry) {
+                is ServerChannelListEntry.Section -> toEntry.sectionId
+                is ServerChannelListEntry.Channel -> toEntry.sectionId
+            }
+            if (targetCatId in collapsedCategoryIds && targetCatId != UncategorisedChannelSectionId) {
+                if (hoveredCategoryId != targetCatId) {
+                    hoveredCategoryId = targetCatId
+                    hoverJob?.cancel()
+                    hoverJob = scope.launch {
+                        delay(600)
+                        onToggleCategory(targetCatId)
+                        haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                    }
+                }
+            } else {
+                hoveredCategoryId = null
+                hoverJob?.cancel()
+            }
+        }
+    }
+
+    fun onStartDrag() {
+        dragStartSections = displayedSections
+        hasMovedDuringDrag = false
+        haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+    }
+
+    fun onStopDrag(onHoldReleaseWithoutMove: () -> Unit) {
+        hoverJob?.cancel()
+        hoverJob = null
+        hoveredCategoryId = null
+        haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
+        if (!hasMovedDuringDrag) {
+            onHoldReleaseWithoutMove()
+        } else {
+            val previous = dragStartSections ?: return
+            if (displayedSections != previous) {
+                scope.launch {
+                    try {
+                        patchServer(serverId, categories = displayedSections.toServerCategories())
+                    } catch (e: Exception) {
+                        displayedSections = previous
+                        Toast.makeText(context, "Failed to reorder: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        dragStartSections = null
+        hasMovedDuringDrag = false
+    }
 
     LazyColumn(
         state = channelListState,
@@ -942,7 +1400,7 @@ fun ColumnScope.ServerChannelListRenderer(
             .fillMaxSize()
             .weight(1f)
     ) {
-        if (categorisedChannels.isNullOrEmpty()) {
+        if (entries.isEmpty()) {
             item {
                 Column(
                     Modifier.padding(16.dp),
@@ -966,53 +1424,117 @@ fun ColumnScope.ServerChannelListRenderer(
         }
 
         items(
-            items = categorisedChannels.orEmpty(),
-            key = { item ->
-                when (item) {
-                    is CategorisedChannelList.Channel -> item.channel.id ?: item.hashCode().toString()
-                    is CategorisedChannelList.Category -> item.category.id ?: item.hashCode().toString()
-                    else -> item.hashCode().toString()
-                }
-            }
-        ) { channelOrCat ->
-            when (channelOrCat) {
-                is CategorisedChannelList.Channel -> {
-                    ChannelItem(
-                        channel = channelOrCat.channel,
-                        isCurrent = when (currentDestination) {
-                            is ChatRouterDestination.Channel -> {
-                                currentDestination.channelId == channelOrCat.channel.id
-                            }
-
-                            else -> false
-                        },
-                        onDestinationChanged = {
-                            onDestinationChanged(it)
-                            scope.launch {
-                                drawerState?.close()
-                            }
-                        },
-                        hasUnread = channelOrCat.channel.lastMessageID?.let { lastMessageID ->
-                            StoatAPI.unreads.hasUnread(
-                                channelOrCat.channel.id!!,
-                                lastMessageID,
-                                serverId
+            items = entries,
+            key = { it.key }
+        ) { entry ->
+            ReorderableItem(
+                state = reorderableState,
+                key = entry.key,
+                enabled = true
+            ) { isDragging ->
+                when (entry) {
+                    is ServerChannelListEntry.Section -> {
+                        val section = displayedSections.firstOrNull { it.id == entry.sectionId }
+                        if (section != null) {
+                            val isCollapsed = section.id in collapsedCategoryIds
+                            val dragModifier = Modifier.longPressDraggableHandle(
+                                enabled = true,
+                                onDragStarted = { onStartDrag() },
+                                onDragStopped = {
+                                    onStopDrag {
+                                        onOpenCategoryContextSheet(section.id)
+                                    }
+                                }
                             )
-                        } ?: false,
-                        isMuted = NotificationSettingsProvider.isChannelMuted(
-                            channelOrCat.channel.id!!,
-                            serverId
-                        ),
-                        showVoiceParticipants = true,
-                        onOpenChannelContextSheet = onOpenChannelContextSheet
-                    )
-                }
+                            CategoryItem(
+                                category = Category(id = section.id, title = section.title, channels = section.channelIds),
+                                isExpanded = !isCollapsed,
+                                onToggle = { onToggleCategory(section.id) },
+                                canManage = canManage,
+                                onCreateChannel = { onOpenCreateChannelForCategory(section.id) },
+                                modifier = dragModifier.then(
+                                    if (isDragging) {
+                                        Modifier
+                                            .shadow(8.dp, RoundedCornerShape(4.dp))
+                                            .scale(1.02f)
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                            )
+                        }
+                    }
 
-                is CategorisedChannelList.Category -> {
-                    CategoryItem(category = channelOrCat.category)
+                    is ServerChannelListEntry.Channel -> {
+                        val channel = StoatAPI.channelCache[entry.channelId]
+                        if (channel != null) {
+                            val dragModifier = Modifier.longPressDraggableHandle(
+                                enabled = true,
+                                onDragStarted = { onStartDrag() },
+                                onDragStopped = {
+                                    onStopDrag {
+                                        onOpenChannelContextSheet(entry.channelId)
+                                    }
+                                }
+                            )
+                            ChannelItem(
+                                channel = channel,
+                                isCurrent = when (currentDestination) {
+                                    is ChatRouterDestination.Channel -> {
+                                        currentDestination.channelId == entry.channelId
+                                    }
+                                    else -> false
+                                },
+                                onDestinationChanged = {
+                                    onDestinationChanged(it)
+                                    scope.launch {
+                                        drawerState?.close()
+                                    }
+                                },
+                                hasUnread = channel.lastMessageID?.let { lastMessageID ->
+                                    StoatAPI.unreads.hasUnread(
+                                        entry.channelId,
+                                        lastMessageID,
+                                        serverId
+                                    )
+                                } ?: false,
+                                isMuted = NotificationSettingsProvider.isChannelMuted(
+                                    entry.channelId,
+                                    serverId
+                                ),
+                                showVoiceParticipants = true,
+                                onOpenChannelContextSheet = onOpenChannelContextSheet,
+                                modifier = dragModifier.then(
+                                    if (isDragging) {
+                                        Modifier
+                                            .shadow(8.dp, CircleShape)
+                                            .scale(1.02f)
+                                            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f))
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }
+
+        item(key = "empty_space_footer") {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpenEmptySpaceContextMenu
+                    )
+            )
+        }
+
         item(key = "last") {
             Spacer(
                 Modifier.height(
@@ -1043,7 +1565,8 @@ fun ChannelItem(
     appendServerName: Boolean = false,
     showVoiceParticipants: Boolean = false,
     onDestinationChanged: (ChatRouterDestination) -> Unit,
-    onOpenChannelContextSheet: (String) -> Unit
+    onOpenChannelContextSheet: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(
         LocalContentColor provides if (isCurrent) {
@@ -1056,6 +1579,30 @@ fun ChannelItem(
             }
         }
     ) {
+        val clickModifier = if (modifier != Modifier) {
+            Modifier
+                .then(modifier)
+                .clickable {
+                    channel.id?.let { chId ->
+                        onDestinationChanged(ChatRouterDestination.Channel(chId))
+                    }
+                }
+        } else {
+            Modifier.combinedClickable(
+                onLongClickLabel = stringResource(R.string.channel_context_sheet_open),
+                onLongClick = {
+                    channel.id?.let { chId ->
+                        onOpenChannelContextSheet(chId)
+                    }
+                },
+                onClick = {
+                    channel.id?.let { chId ->
+                        onDestinationChanged(ChatRouterDestination.Channel(chId))
+                    }
+                }
+            )
+        }
+
         Column {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1065,19 +1612,7 @@ fun ChannelItem(
                     .clip(
                         CircleShape
                     )
-                    .combinedClickable(
-                        onLongClickLabel = stringResource(R.string.channel_context_sheet_open),
-                        onLongClick = {
-                            channel.id?.let { chId ->
-                                onOpenChannelContextSheet(chId)
-                            }
-                        },
-                        onClick = {
-                            channel.id?.let { chId ->
-                                onDestinationChanged(ChatRouterDestination.Channel(chId))
-                            }
-                        }
-                    )
+                    .then(clickModifier)
                     .then(
                         if (isCurrent) {
                             Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
@@ -1275,7 +1810,10 @@ private fun VoiceChannelParticipantRow(
 fun CategoryItem(
     category: Category,
     isExpanded: Boolean = true,
-    onToggle: () -> Unit = {}
+    onToggle: () -> Unit = {},
+    canManage: Boolean = false,
+    onCreateChannel: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val rotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isExpanded) 90f else 0f,
@@ -1286,8 +1824,9 @@ fun CategoryItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .then(modifier)
             .clickable(onClick = onToggle)
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
+            .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_keyboard_arrow_right_24dp),
@@ -1305,8 +1844,28 @@ fun CategoryItem(
             letterSpacing = 0.6.sp,
             color = Color(0xFF949BA4),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
+        if (canManage) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = ripple(bounded = false, radius = 18.dp),
+                        onClick = onCreateChannel
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_add_24dp),
+                    contentDescription = stringResource(R.string.server_settings_channels_create_channel),
+                    tint = Color(0xFF949BA4),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
     }
 }
 

@@ -32,6 +32,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +67,18 @@ import chat.stoat.core.model.schemas.ChannelType
 import chat.stoat.internals.Platform
 import chat.stoat.internals.extensions.rememberServerPermissions
 import chat.stoat.internals.server.availableServerSettingsOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
+import chat.stoat.api.internals.PermissionBit
+import chat.stoat.api.internals.ULID
+import chat.stoat.api.internals.hasPermission
+import chat.stoat.api.routes.server.patchServer
+import chat.stoat.internals.server.ServerChannelSection
+import chat.stoat.internals.server.serverChannelSections
+import chat.stoat.internals.server.toServerCategories
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
@@ -110,6 +123,10 @@ fun ServerContextSheet(
     var showCreateChannelDialog by remember { mutableStateOf(false) }
     var newChannelName by remember { mutableStateOf("") }
     var newChannelType by remember { mutableStateOf("Text") }
+    var showCreateCategoryDialog by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
+    val categoryFocusRequester = remember { FocusRequester() }
+    val canManageChannels = isOwner || (permissions != null && (permissions!!.hasPermission(PermissionBit.ManageChannel) || permissions!!.hasPermission(PermissionBit.ManageServer)))
 
     // — Leave confirmation dialog —
     if (showLeaveConfirmation) {
@@ -250,6 +267,83 @@ fun ServerContextSheet(
         )
     }
 
+    if (showCreateCategoryDialog) {
+        LaunchedEffect(Unit) {
+            categoryFocusRequester.requestFocus()
+        }
+        AlertDialog(
+            onDismissRequest = { showCreateCategoryDialog = false },
+            containerColor = SectionBg,
+            title = {
+                Text("Create Category", color = TokenHeader, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                OutlinedTextField(
+                    value = newCategoryName,
+                    onValueChange = { newCategoryName = it },
+                    label = { Text("Category Name", color = TokenMuted) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (newCategoryName.isNotBlank()) {
+                                coroutineScope.launch {
+                                    val sections = serverChannelSections(server) + ServerChannelSection(
+                                        id = ULID.makeNext(),
+                                        title = newCategoryName.trim(),
+                                        channelIds = emptyList()
+                                    )
+                                    patchServer(serverId, categories = sections.toServerCategories())
+                                    newCategoryName = ""
+                                    showCreateCategoryDialog = false
+                                    onHideSheet()
+                                }
+                            }
+                        }
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(categoryFocusRequester),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TokenHeader,
+                        unfocusedTextColor = TokenHeader,
+                        focusedBorderColor = TokenBlurple,
+                        unfocusedBorderColor = TokenMuted,
+                        cursorColor = TokenBlurple
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newCategoryName.isNotBlank()) {
+                            coroutineScope.launch {
+                                val sections = serverChannelSections(server) + ServerChannelSection(
+                                    id = ULID.makeNext(),
+                                    title = newCategoryName.trim(),
+                                    channelIds = emptyList()
+                                )
+                                patchServer(serverId, categories = sections.toServerCategories())
+                                newCategoryName = ""
+                                showCreateCategoryDialog = false
+                                onHideSheet()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TokenBlurple),
+                    enabled = newCategoryName.isNotBlank()
+                ) {
+                    Text("Create Category", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateCategoryDialog = false }) {
+                    Text("Cancel", color = TokenMuted)
+                }
+            }
+        )
+    }
+
     // — Sheet body —
     Column(
         modifier = Modifier
@@ -315,14 +409,25 @@ fun ServerContextSheet(
             }
         )
 
-        // ─── CREATE CHANNEL ───
-        SheetButton(
-            leadingContent = {
-                Icon(painter = painterResource(R.drawable.ic_add_24dp), contentDescription = null)
-            },
-            headlineContent = { Text("Create Channel") },
-            onClick = { showCreateChannelDialog = true }
-        )
+        if (canManageChannels) {
+            // ─── CREATE CHANNEL ───
+            SheetButton(
+                leadingContent = {
+                    Icon(painter = painterResource(R.drawable.ic_add_24dp), contentDescription = null)
+                },
+                headlineContent = { Text("Create Channel") },
+                onClick = { showCreateChannelDialog = true }
+            )
+
+            // ─── CREATE CATEGORY ───
+            SheetButton(
+                leadingContent = {
+                    Icon(painter = painterResource(R.drawable.ic_create_new_folder_24dp), contentDescription = null)
+                },
+                headlineContent = { Text("Create Category") },
+                onClick = { showCreateCategoryDialog = true }
+            )
+        }
 
         HorizontalDivider(color = Color(0xFF3A3C42), thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 

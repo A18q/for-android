@@ -84,6 +84,8 @@ data class Channel(
     val rolePermissions: Map<String, PermissionDescription>? = null,
     @SerialName("default_permissions")
     val defaultPermissions: PermissionDescription? = null,
+    @SerialName("user_permissions")
+    val userPermissions: Map<String, PermissionDescription>? = null,
     val nsfw: Boolean? = null,
     val voice: VoiceInformation? = null,
     val slowmode: Long? = null,
@@ -105,6 +107,7 @@ data class Channel(
             server = partial.server ?: server,
             rolePermissions = partial.rolePermissions ?: rolePermissions,
             defaultPermissions = partial.defaultPermissions ?: defaultPermissions,
+            userPermissions = partial.userPermissions ?: userPermissions,
             nsfw = partial.nsfw ?: nsfw,
             voice = partial.voice ?: voice,
             slowmode = partial.slowmode ?: slowmode,

@@ -37,6 +37,9 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import chat.stoat.internals.server.UncategorisedChannelSectionId
+import chat.stoat.internals.server.serverChannelSections
+import chat.stoat.internals.server.toServerCategories
 
 @Serializable
 data class FetchMembersResponse(
@@ -127,6 +130,11 @@ suspend fun fetchMember(serverId: String, userId: String, pure: Boolean = false)
 }
 
 suspend fun kickMember(serverId: String, userId: String) {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            chat.stoat.api.internals.HierarchyChecks.checkCanModerateMember(server, selfId, userId)
+        }
+    }
     val response = StoatHttp.delete("/servers/$serverId/members/$userId".api())
     val responseContent = response.bodyAsText()
 
@@ -135,6 +143,7 @@ suspend fun kickMember(serverId: String, userId: String) {
     }
 
     StoatAPI.members.removeMember(serverId, userId)
+    chat.stoat.api.internals.Roles.invalidateCache()
 }
 
 suspend fun banMember(
@@ -143,6 +152,11 @@ suspend fun banMember(
     reason: String?,
     deleteMessageSeconds: Long,
 ) {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            chat.stoat.api.internals.HierarchyChecks.checkCanModerateMember(server, selfId, userId)
+        }
+    }
     val body = BanMemberBody(
         reason = reason?.trim()?.takeIf(String::isNotEmpty),
         deleteMessageSeconds = deleteMessageSeconds,
@@ -158,6 +172,7 @@ suspend fun banMember(
     }
 
     StoatAPI.members.removeMember(serverId, userId)
+    chat.stoat.api.internals.Roles.invalidateCache()
 }
 
 suspend fun fetchServerBans(serverId: String): BanListResult {
@@ -216,6 +231,16 @@ suspend fun patchMember(
     timeout: String? = null,
     remove: List<String> = emptyList(),
 ): Member {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            if (userId != selfId && (roles != null || timeout != null || remove.contains("Timeout"))) {
+                chat.stoat.api.internals.HierarchyChecks.checkCanModerateMember(server, selfId, userId)
+            }
+            roles?.forEach { rId ->
+                chat.stoat.api.internals.HierarchyChecks.checkCanAssignRole(server, selfId, rId)
+            }
+        }
+    }
     val body = EditMemberBody(
         nickname = nickname,
         pronouns = pronouns,
@@ -247,6 +272,7 @@ suspend fun patchMember(
 
     return StoatJson.decodeFromString(Member.serializer(), responseContent).also {
         StoatAPI.members.setMember(serverId, it)
+        chat.stoat.api.internals.Roles.invalidateCache()
     }
 }
 
@@ -271,6 +297,13 @@ suspend fun patchServer(
     systemMessages: Map<String, String>? = null,
     remove: List<String> = emptyList(),
 ): Server {
+    if (categories != null) {
+        StoatAPI.serverCache[serverId]?.let { server ->
+            StoatAPI.selfId?.let { selfId ->
+                chat.stoat.api.internals.HierarchyChecks.validateCategoriesPatch(server, selfId, categories)
+            }
+        }
+    }
     val body = mutableMapOf<String, JsonElement>()
 
     name?.let { body["name"] = JsonPrimitive(it) }
@@ -312,6 +345,7 @@ suspend fun patchServer(
 
     val server = StoatJson.decodeFromString(Server.serializer(), responseContent)
     StoatAPI.serverCache[serverId] = server
+    chat.stoat.api.internals.Roles.invalidateCache()
     return server
 }
 
@@ -325,7 +359,13 @@ suspend fun createServerChannel(
     serverId: String,
     name: String,
     channelType: ChannelType,
+    categoryId: String? = null,
 ): Channel {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            chat.stoat.api.internals.HierarchyChecks.checkCanManageChannel(server, selfId, categoryId)
+        }
+    }
     require(channelType == ChannelType.TextChannel || channelType == ChannelType.VoiceChannel)
     val body = CreateServerChannelBody(
         name = name,
@@ -352,6 +392,7 @@ suspend fun createServerChannel(
                 }
             }
         }
+        chat.stoat.api.internals.Roles.invalidateCache()
     }
 }
 
@@ -393,8 +434,14 @@ suspend fun createChannelInServer(
     serverId: String,
     name: String,
     type: String = "Text",
-    description: String? = null
+    description: String? = null,
+    categoryId: String? = null
 ): chat.stoat.core.model.schemas.Channel? {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            chat.stoat.api.internals.HierarchyChecks.checkCanManageChannel(server, selfId, categoryId)
+        }
+    }
     val body = CreateChannelBody(type = type, name = name, description = description)
     val response = StoatHttp.post("/servers/$serverId/channels".api()) {
         contentType(ContentType.Application.Json)
@@ -413,8 +460,23 @@ suspend fun createChannelInServer(
     val server = StoatAPI.serverCache[serverId]
     if (server != null) {
         val newChannels = (server.channels ?: emptyList()) + channelId
-        StoatAPI.serverCache[serverId] = server.copy(channels = newChannels)
+        var updatedServer = server.copy(channels = newChannels)
+        if (categoryId != null && categoryId != UncategorisedChannelSectionId) {
+            val sections = serverChannelSections(updatedServer).map { section ->
+                section.copy(
+                    channelIds = section.channelIds.filterNot { it == channelId } +
+                            if (section.id == categoryId) listOf(channelId) else emptyList()
+                )
+            }
+            val cats = sections.toServerCategories()
+            updatedServer = updatedServer.copy(categories = cats)
+            StoatAPI.serverCache[serverId] = updatedServer
+            patchServer(serverId, categories = cats)
+        } else {
+            StoatAPI.serverCache[serverId] = updatedServer
+        }
     }
+    chat.stoat.api.internals.Roles.invalidateCache()
     return channel
 }
 

@@ -195,6 +195,12 @@ suspend fun fetchSingleMessage(channelId: String, messageId: String): Message {
 }
 
 suspend fun leaveDeleteOrCloseChannel(channelId: String, leaveSilently: Boolean = false) {
+    val channel = StoatAPI.channelCache[channelId]
+    val server = channel?.server?.let(StoatAPI.serverCache::get)
+    val selfId = StoatAPI.selfId
+    if (server != null && selfId != null && server.owner != selfId) {
+        chat.stoat.api.internals.HierarchyChecks.checkCanManageChannelOnChannel(server, channel, selfId)
+    }
     StoatHttp.delete("/channels/$channelId".api()) {
         parameter("leave_silently", leaveSilently)
     }
@@ -224,6 +230,19 @@ private suspend fun setChannelPermissions(
     path: String,
     permissions: PermissionDescription,
 ): Channel {
+    val channel = StoatAPI.channelCache[channelId]
+    val server = channel?.server?.let(StoatAPI.serverCache::get)
+    val selfId = StoatAPI.selfId
+    if (server != null && selfId != null && server.owner != selfId) {
+        if (channel != null) {
+            chat.stoat.api.internals.HierarchyChecks.checkCanManagePermissions(server, channel, selfId)
+        }
+        val member = StoatAPI.members.getMember(server.id.orEmpty(), selfId)
+        if (member != null) {
+            val actorPerms = chat.stoat.api.internals.Roles.permissionFor(server, member)
+            chat.stoat.api.internals.HierarchyChecks.checkNoPrivilegeEscalation(actorPerms, permissions)
+        }
+    }
     val body = SetChannelPermissionsBody(
         ChannelPermissionOverrideBody(permissions.a, permissions.d)
     )
@@ -236,6 +255,7 @@ private suspend fun setChannelPermissions(
 
     return StoatJson.decodeFromString(Channel.serializer(), content).also {
         StoatAPI.channelCache[channelId] = it
+        chat.stoat.api.internals.Roles.invalidateCache()
     }
 }
 
@@ -249,6 +269,12 @@ suspend fun patchChannel(
     nsfw: Boolean? = null,
     pure: Boolean = false
 ) {
+    val channel = StoatAPI.channelCache[channelId]
+    val server = channel?.server?.let(StoatAPI.serverCache::get)
+    val selfId = StoatAPI.selfId
+    if (server != null && selfId != null && server.owner != selfId && channel != null) {
+        chat.stoat.api.internals.HierarchyChecks.checkCanManageChannelOnChannel(server, channel, selfId)
+    }
     val body = mutableMapOf<String, JsonElement>()
 
     if (name != null) {

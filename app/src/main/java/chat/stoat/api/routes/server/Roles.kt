@@ -71,6 +71,11 @@ suspend fun fetchServerRole(serverId: String, roleId: String): Role {
 }
 
 suspend fun createServerRole(serverId: String, name: String): CreatedServerRole {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            chat.stoat.api.internals.HierarchyChecks.checkCanManageRoles(server, selfId)
+        }
+    }
     val response = StoatHttp.post("/servers/$serverId/roles".api()) {
         contentType(ContentType.Application.Json)
         setBody(StoatJson.encodeToString(CreateRoleBody.serializer(), CreateRoleBody(name)))
@@ -92,6 +97,13 @@ suspend fun editServerRole(
     icon: String? = null,
     remove: List<String> = emptyList(),
 ): Role {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            server.roles?.get(roleId)?.let { targetRole ->
+                chat.stoat.api.internals.HierarchyChecks.checkCanManageRole(server, selfId, targetRole)
+            }
+        }
+    }
     val body = EditRoleBody(name, colour, hoist, icon, remove)
     val response = StoatHttp.patch("/servers/$serverId/roles/$roleId".api()) {
         contentType(ContentType.Application.Json)
@@ -102,10 +114,18 @@ suspend fun editServerRole(
 
     return StoatJson.decodeFromString(Role.serializer(), content).also {
         updateCachedRole(serverId, roleId, it)
+        chat.stoat.api.internals.Roles.invalidateCache()
     }
 }
 
 suspend fun deleteServerRole(serverId: String, roleId: String) {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            server.roles?.get(roleId)?.let { targetRole ->
+                chat.stoat.api.internals.HierarchyChecks.checkCanManageRole(server, selfId, targetRole)
+            }
+        }
+    }
     val response = StoatHttp.delete("/servers/$serverId/roles/$roleId".api())
     if (!response.status.isSuccess()) {
         throw Exception(apiError(response.bodyAsText(), response.status.value))
@@ -116,6 +136,7 @@ suspend fun deleteServerRole(serverId: String, roleId: String) {
             roles = server.roles.orEmpty() - roleId,
         )
     }
+    chat.stoat.api.internals.Roles.invalidateCache()
 }
 
 suspend fun setServerRolePermissions(
@@ -123,10 +144,24 @@ suspend fun setServerRolePermissions(
     roleId: String,
     permissions: PermissionDescription,
 ): Server {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            if (server.owner != selfId) {
+                val member = StoatAPI.members.getMember(serverId, selfId)
+                if (member != null) {
+                    val actorPerms = chat.stoat.api.internals.Roles.permissionFor(server, member)
+                    chat.stoat.api.internals.HierarchyChecks.checkNoPrivilegeEscalation(actorPerms, permissions)
+                }
+            }
+            server.roles?.get(roleId)?.let { targetRole ->
+                chat.stoat.api.internals.HierarchyChecks.checkCanManageRole(server, selfId, targetRole)
+            }
+        }
+    }
     val body = SetRolePermissionsBody(
         PermissionOverrideBody(permissions.a, permissions.d)
     )
-    return updateServerFromResponse(
+    val updated = updateServerFromResponse(
         serverId = serverId,
         responseContent = StoatHttp.put("/servers/$serverId/permissions/$roleId".api()) {
             contentType(ContentType.Application.Json)
@@ -139,9 +174,22 @@ suspend fun setServerRolePermissions(
             content
         },
     )
+    chat.stoat.api.internals.Roles.invalidateCache()
+    return updated
 }
 
 suspend fun setDefaultServerPermissions(serverId: String, permissions: Long): Server {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            if (server.owner != selfId) {
+                val member = StoatAPI.members.getMember(serverId, selfId)
+                if (member != null) {
+                    val actorPerms = chat.stoat.api.internals.Roles.permissionFor(server, member)
+                    chat.stoat.api.internals.HierarchyChecks.checkNoPrivilegeEscalation(actorPerms, permissions)
+                }
+            }
+        }
+    }
     val response = StoatHttp.put("/servers/$serverId/permissions/default".api()) {
         contentType(ContentType.Application.Json)
         setBody(
@@ -153,10 +201,25 @@ suspend fun setDefaultServerPermissions(serverId: String, permissions: Long): Se
     }
     val content = response.bodyAsText()
     if (!response.status.isSuccess()) throw Exception(apiError(content, response.status.value))
-    return updateServerFromResponse(serverId, content)
+    val updated = updateServerFromResponse(serverId, content)
+    chat.stoat.api.internals.Roles.invalidateCache()
+    return updated
 }
 
 suspend fun reorderServerRoles(serverId: String, roleIds: List<String>): Server {
+    StoatAPI.serverCache[serverId]?.let { server ->
+        StoatAPI.selfId?.let { selfId ->
+            chat.stoat.api.internals.HierarchyChecks.checkCanManageRoles(server, selfId)
+            val ownTopRank = chat.stoat.api.internals.HierarchyChecks.resolveMemberTopRoleRank(server, selfId)
+            roleIds.forEach { roleId ->
+                server.roles?.get(roleId)?.let { role ->
+                    if ((role.rank ?: Double.MAX_VALUE) <= ownTopRank && server.owner != selfId) {
+                        throw SecurityException("Hierarchy violation: Cannot reorder role ranked equal to or higher than your top role")
+                    }
+                }
+            }
+        }
+    }
     val response = StoatHttp.patch("/servers/$serverId/roles/ranks".api()) {
         contentType(ContentType.Application.Json)
         setBody(
@@ -168,7 +231,9 @@ suspend fun reorderServerRoles(serverId: String, roleIds: List<String>): Server 
     }
     val content = response.bodyAsText()
     if (!response.status.isSuccess()) throw Exception(apiError(content, response.status.value))
-    return updateServerFromResponse(serverId, content)
+    val updated = updateServerFromResponse(serverId, content)
+    chat.stoat.api.internals.Roles.invalidateCache()
+    return updated
 }
 
 private fun updateCachedRole(serverId: String, roleId: String, role: Role) {

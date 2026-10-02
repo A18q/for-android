@@ -57,7 +57,13 @@ infix fun Long?.has(flag: ServerFlags): Boolean {
 data class Category(
     val id: String? = null,
     val title: String? = null,
-    val channels: List<String>? = null
+    val channels: List<String>? = null,
+    @SerialName("role_permissions")
+    val rolePermissions: Map<String, PermissionDescription>? = null,
+    @SerialName("default_permissions")
+    val defaultPermissions: PermissionDescription? = null,
+    @SerialName("user_permissions")
+    val userPermissions: Map<String, PermissionDescription>? = null,
 )
 
 @Serializable

@@ -936,7 +936,11 @@ private fun PermissionRow(
             )
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                ) {
                     Text(stringResource(option.title), style = MaterialTheme.typography.titleMedium)
                     Text(
                         stringResource(option.description),
@@ -955,7 +959,7 @@ private fun PermissionRow(
                         value = overrideValue,
                         enabled = enabled,
                         onValueChange = onOverrideChange,
-                        modifier = Modifier.padding(start = 12.dp),
+                        modifier = Modifier.padding(start = 4.dp),
                     )
                 }
             }

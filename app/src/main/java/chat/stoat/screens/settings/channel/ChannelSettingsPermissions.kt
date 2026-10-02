@@ -600,7 +600,11 @@ private fun ChannelPermissionRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
                 Text(stringResource(option.title), style = MaterialTheme.typography.titleMedium)
                 Text(
                     stringResource(option.description),
@@ -612,7 +616,7 @@ private fun ChannelPermissionRow(
                 value = value,
                 enabled = enabled,
                 onValueChange = onValueChange,
-                modifier = Modifier.padding(start = 12.dp),
+                modifier = Modifier.padding(start = 4.dp),
             )
         }
     }
