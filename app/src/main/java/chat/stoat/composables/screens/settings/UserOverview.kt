@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -45,6 +46,7 @@ import chat.stoat.api.internals.ULID
 import chat.stoat.api.internals.solidColor
 import chat.stoat.api.routes.user.fetchUserProfile
 import chat.stoat.composables.expressive.Wave
+import chat.stoat.composables.generic.PresenceBadge
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.presenceFromStatus
@@ -160,7 +162,7 @@ fun RawUserOverview(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(115.dp)
+                .height(180.dp)
         ) {
             // Banner Background
             val resolvedBg = resolveAutumnBackgroundUrl(background, backgroundUrl)
@@ -170,14 +172,14 @@ fun RawUserOverview(
                     description = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(80.dp),
+                        .height(135.dp),
                     contentScale = ContentScale.Crop
                 )
             } else {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(80.dp)
+                        .height(135.dp)
                         .background(
                             Brush.verticalGradient(
                                 listOf(
@@ -189,25 +191,40 @@ fun RawUserOverview(
                 )
             }
 
-            // Overlapping 70dp Avatar with 4dp cut-out border matching card background
+            // Overlapping Circular Avatar Staged Over Banner
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(start = 16.dp)
+                    .size(88.dp)
+                    .background(Color(0xFF2B2D31), CircleShape)
+                    .padding(3.dp)
             ) {
                 UserAvatar(
                     username = user.displayName ?: stringResource(id = R.string.unknown),
                     rawUrl = pfpUrl,
                     userId = user.id ?: ULID.makeSpecial(0),
                     avatar = user.avatar,
-                    size = 70.dp,
-                    presenceSize = 20.dp,
-                    presence = presenceFromStatus(user.status?.presence, user.online ?: false),
+                    size = 82.dp,
+                    presenceSize = 0.dp,
+                    shape = CircleShape,
                     modifier = Modifier
-                        .size(70.dp)
+                        .fillMaxSize()
                         .clip(CircleShape)
-                        .border(4.dp, Color(0xFF2B2D31), CircleShape)
                 )
+
+                val userPresence = presenceFromStatus(user.status?.presence, user.online ?: false)
+                if (userPresence != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(24.dp)
+                            .background(Color(0xFF2B2D31), CircleShape)
+                            .padding(2.dp)
+                    ) {
+                        PresenceBadge(userPresence, size = 20.dp)
+                    }
+                }
             }
         }
 

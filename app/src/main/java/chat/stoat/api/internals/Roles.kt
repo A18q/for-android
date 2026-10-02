@@ -10,15 +10,9 @@ import chat.stoat.core.model.schemas.Server
 import chat.stoat.core.model.schemas.User
 import kotlinx.datetime.Clock
 
-import java.util.concurrent.ConcurrentHashMap
-
 object Roles {
-    private val channelPermissionCache = ConcurrentHashMap<String, Long>()
-    private val serverPermissionCache = ConcurrentHashMap<String, Long>()
-
     fun invalidateCache() {
-        channelPermissionCache.clear()
-        serverPermissionCache.clear()
+        // Cache removed to prevent stale 0L lockouts
     }
 
     // lowest rank = highest role
@@ -57,38 +51,21 @@ object Roles {
     }
 
     fun permissionFor(server: Server, member: Member): Long {
-        val userId = member.id?.user ?: return 0L
-        val serverId = server.id.orEmpty()
-        val cacheKey = "$serverId:$userId"
-        serverPermissionCache[cacheKey]?.let { return it }
+        val user = member.id?.user?.let { StoatAPI.userCache[it] }
 
-        val computed = computeServerPermission(server, member)
-        serverPermissionCache[cacheKey] = computed
-        return computed
-    }
-
-    private fun computeServerPermission(server: Server, member: Member): Long {
-        val userId = member.id?.user ?: return 0L
-        val user = StoatAPI.userCache[userId]
-
-        // 1. Owner or privileged user: allow all
         if (user?.privileged == true) return PermissionBit.GrantAllSafe.value
-        if (server.owner == userId) return PermissionBit.GrantAllSafe.value
+        if (server.owner == member.id?.user) return PermissionBit.GrantAllSafe.value
 
-        // 2. Server default permissions
         var calculated = server.defaultPermissions ?: BitDefaults.Server
 
         if (calculated.hasPermission(PermissionBit.GrantAllSafe) || calculated.hasPermission(PermissionBit.GrantAll)) {
             return PermissionBit.GrantAllSafe.value
         }
 
-        // 3. Member's roles in rank order (lowest to highest priority)
-        val sortedRoles = member.roles
-            ?.mapNotNull { server.roles?.get(it) }
-            ?.sortedByDescending { it.rank ?: Double.MAX_VALUE }
-
+        val sortedRoles = member.roles?.mapNotNull { server.roles?.get(it) }?.sortedByDescending { it.rank ?: Double.MAX_VALUE }
         sortedRoles?.forEach { role ->
             val permissions = role.permissions ?: return@forEach
+
             calculated = (calculated or permissions.a) and permissions.d.inv()
             if (calculated.hasPermission(PermissionBit.GrantAllSafe) || calculated.hasPermission(PermissionBit.GrantAll)) {
                 return PermissionBit.GrantAllSafe.value
@@ -108,26 +85,6 @@ object Roles {
         member: Member? = null,
         server: Server? = null
     ): Long {
-        val channelId = channel.id.orEmpty()
-        val userId = user?.id ?: member?.id?.user.orEmpty()
-        val cacheKey = "$channelId:$userId"
-        if (channelId.isNotEmpty() && userId.isNotEmpty()) {
-            channelPermissionCache[cacheKey]?.let { return it }
-        }
-
-        val computed = computeChannelPermission(channel, user, member, server)
-        if (channelId.isNotEmpty() && userId.isNotEmpty()) {
-            channelPermissionCache[cacheKey] = computed
-        }
-        return computed
-    }
-
-    private fun computeChannelPermission(
-        channel: Channel,
-        user: User? = null,
-        member: Member? = null,
-        serverOpt: Server? = null
-    ): Long {
         return when (channel.channelType) {
             ChannelType.SavedMessages -> BitDefaults.SavedMessages
 
@@ -135,31 +92,32 @@ object Roles {
             ChannelType.Group -> if (channel.owner == user?.id) PermissionBit.GrantAllSafe.value else BitDefaults.DirectMessages
 
             ChannelType.TextChannel, ChannelType.VoiceChannel -> {
-                val server = serverOpt ?: StoatAPI.serverCache[channel.server]
+                val targetServer = server ?: StoatAPI.serverCache[channel.server]
                     ?: return 0L
-                val userId = user?.id ?: member?.id?.user ?: return 0L
+                val srvId = targetServer.id ?: return 0L
 
-                // 1. Owner: allow all
-                if (server.owner == userId) return PermissionBit.GrantAllSafe.value
+                val userId = user?.id ?: member?.id?.user
+                if (targetServer.owner == userId) return PermissionBit.GrantAllSafe.value
 
-                val chMember = member ?: StoatAPI.members.getMember(
-                    server.id ?: return 0L,
-                    userId
-                ) ?: return 0L
+                val chMember = member ?: (if (userId != null) StoatAPI.members.getMember(srvId, userId) else null)
 
-                // 2. Server default permissions & 3. Member's roles in rank order
-                var calculated = computeServerPermission(server, chMember)
+                var calculated = if (chMember != null) {
+                    permissionFor(targetServer, chMember)
+                } else {
+                    targetServer.defaultPermissions ?: BitDefaults.Server
+                }
+
                 if (calculated.hasPermission(PermissionBit.GrantAllSafe) || calculated.hasPermission(PermissionBit.GrantAll)) {
                     return PermissionBit.GrantAllSafe.value
                 }
 
-                val memberRolesSorted = chMember.roles
-                    ?.mapNotNull { id -> server.roles?.get(id)?.let { id to it } }
+                val memberRolesSorted = chMember?.roles
+                    ?.mapNotNull { id -> targetServer.roles?.get(id)?.let { id to it } }
                     ?.sortedByDescending { it.second.rank ?: Double.MAX_VALUE }
                     .orEmpty()
 
-                // 4. Category overrides: default, then roles, then member
-                val category = server.categories?.firstOrNull { it.channels?.contains(channel.id) == true }
+                // Category overrides: default, then roles, then user
+                val category = targetServer.categories?.firstOrNull { it.channels?.contains(channel.id) == true }
                 if (category != null) {
                     category.defaultPermissions?.let {
                         calculated = (calculated or it.a) and it.d.inv()
@@ -169,12 +127,14 @@ object Roles {
                             calculated = (calculated or it.a) and it.d.inv()
                         }
                     }
-                    category.userPermissions?.get(userId)?.let {
-                        calculated = (calculated or it.a) and it.d.inv()
+                    if (userId != null) {
+                        category.userPermissions?.get(userId)?.let {
+                            calculated = (calculated or it.a) and it.d.inv()
+                        }
                     }
                 }
 
-                // 5. Channel overrides: default, then roles, then member
+                // Channel overrides: default, then roles, then user
                 channel.defaultPermissions?.let {
                     calculated = (calculated or it.a) and it.d.inv()
                 }
@@ -183,23 +143,24 @@ object Roles {
                         calculated = (calculated or it.a) and it.d.inv()
                     }
                 }
-                channel.userPermissions?.get(userId)?.let {
-                    calculated = (calculated or it.a) and it.d.inv()
+                if (userId != null) {
+                    channel.userPermissions?.get(userId)?.let {
+                        calculated = (calculated or it.a) and it.d.inv()
+                    }
                 }
 
-                if (chMember.canPublish == false) {
+                if (chMember?.canPublish == false) {
                     calculated = calculated and PermissionBit.Speak.value.inv()
                     calculated = calculated and PermissionBit.Video.value.inv()
                 }
-                if (chMember.canReceive == false) {
+                if (chMember?.canReceive == false) {
                     calculated = calculated and PermissionBit.Listen.value.inv()
                 }
 
-                if (chMember.timeoutTimestamp()?.let { it > Clock.System.now() } == true) {
+                if (chMember?.timeoutTimestamp()?.let { it > Clock.System.now() } == true) {
                     calculated = calculated and BitDefaults.AllowedInTimeout
                 }
 
-                // 6. If the member can't view the channel, it is hidden and everything else is moot
                 if (!calculated.hasPermission(PermissionBit.ViewChannel)) {
                     return 0L
                 }

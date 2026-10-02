@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -61,6 +62,7 @@ import chat.stoat.api.routes.user.fetchUserProfile
 import chat.stoat.callbacks.Action
 import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.generic.NonIdealState
+import chat.stoat.composables.generic.PresenceBadge
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.presenceFromStatus
@@ -198,7 +200,7 @@ fun UserInfoSheet(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(195.dp)
+                .height(240.dp)
         ) {
             val background = profile?.background
             val bgId = background?.id
@@ -213,7 +215,7 @@ fun UserInfoSheet(
                     description = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(135.dp),
+                        .height(175.dp),
                     contentScale = ContentScale.Crop
                 )
             } else {
@@ -221,7 +223,7 @@ fun UserInfoSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(135.dp)
+                        .height(175.dp)
                         .background(
                             Brush.verticalGradient(
                                 listOf(
@@ -233,24 +235,39 @@ fun UserInfoSheet(
                 )
             }
 
-            // Discord Overlapping 120dp Circular Avatar with 6dp Cut-Out Border
+            // Discord Overlapping Circular Avatar Staged Over Banner
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(start = 16.dp)
+                    .size(126.dp)
+                    .background(DiscordDarkCanvas, CircleShape)
+                    .padding(4.dp)
             ) {
                 UserAvatar(
                     username = User.resolveDefaultName(user),
                     userId = user.id ?: "",
                     avatar = user.avatar,
-                    size = 120.dp,
-                    presenceSize = 32.dp,
-                    presence = presenceFromStatus(user.status?.presence, user.online ?: false),
+                    size = 118.dp,
+                    presenceSize = 0.dp,
+                    shape = CircleShape,
                     modifier = Modifier
-                        .size(120.dp)
+                        .fillMaxSize()
                         .clip(CircleShape)
-                        .border(6.dp, DiscordDarkCanvas, CircleShape)
                 )
+
+                val userPresence = presenceFromStatus(user.status?.presence, user.online ?: false)
+                if (userPresence != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(30.dp)
+                            .background(DiscordDarkCanvas, CircleShape)
+                            .padding(3.dp)
+                    ) {
+                        PresenceBadge(userPresence, size = 24.dp)
+                    }
+                }
             }
 
             // Discord Badge Capsule Pinned on the Right
