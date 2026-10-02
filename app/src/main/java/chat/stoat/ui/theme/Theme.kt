@@ -136,12 +136,64 @@ val AmoledColorScheme = DarkColorScheme.copy(
     surfaceContainerHighest = Color(0xff000000),
 )
 
+val StoatColorScheme = darkColorScheme(
+    primary = Colour.PrimaryDark,
+    onPrimary = Colour.OnPrimaryDark,
+    primaryContainer = Colour.PrimaryContainerDark,
+    onPrimaryContainer = Colour.OnPrimaryContainerDark,
+    inversePrimary = Colour.InversePrimaryDark,
+    secondary = Colour.SecondaryDark,
+    onSecondary = Colour.OnSecondaryDark,
+    secondaryContainer = Colour.SecondaryContainerDark,
+    onSecondaryContainer = Colour.OnSecondaryContainerDark,
+    tertiary = Colour.TertiaryDark,
+    onTertiary = Colour.OnTertiaryDark,
+    tertiaryContainer = Colour.TertiaryContainerDark,
+    onTertiaryContainer = Colour.OnTertiaryContainerDark,
+    background = Colour.BackgroundDark,
+    onBackground = Colour.OnBackgroundDark,
+    surface = Colour.SurfaceDark,
+    onSurface = Colour.OnSurfaceDark,
+    surfaceVariant = Colour.SurfaceVariantDark,
+    onSurfaceVariant = Colour.OnSurfaceVariantDark,
+    surfaceTint = Colour.SurfaceTintDark,
+    inverseSurface = Colour.InverseSurfaceDark,
+    inverseOnSurface = Colour.InverseOnSurfaceDark,
+    error = Colour.ErrorDark,
+    onError = Colour.OnErrorDark,
+    errorContainer = Colour.ErrorContainerDark,
+    onErrorContainer = Colour.OnErrorContainerDark,
+    outline = Colour.OutlineDark,
+    outlineVariant = Colour.OutlineVariantDark,
+    scrim = Colour.ScrimDark,
+    surfaceBright = Colour.SurfaceBrightDark,
+    surfaceContainer = Colour.SurfaceContainerDark,
+    surfaceContainerHigh = Colour.SurfaceContainerHighDark,
+    surfaceContainerHighest = Colour.SurfaceContainerHighestDark,
+    surfaceContainerLow = Colour.SurfaceContainerLowDark,
+    surfaceContainerLowest = Colour.SurfaceContainerLowestDark,
+    surfaceDim = Colour.SurfaceDimDark,
+    primaryFixed = Colour.PrimaryFixed,
+    primaryFixedDim = Colour.PrimaryFixedDim,
+    onPrimaryFixed = Colour.OnPrimaryFixed,
+    onPrimaryFixedVariant = Colour.OnPrimaryFixedVariant,
+    secondaryFixed = Colour.SecondaryFixed,
+    secondaryFixedDim = Colour.SecondaryFixedDim,
+    onSecondaryFixed = Colour.OnSecondaryFixed,
+    onSecondaryFixedVariant = Colour.OnSecondaryFixedVariant,
+    tertiaryFixed = Colour.TertiaryFixed,
+    tertiaryFixedDim = Colour.TertiaryFixedDim,
+    onTertiaryFixed = Colour.OnTertiaryFixed,
+    onTertiaryFixedVariant = Colour.OnTertiaryFixedVariant,
+)
+
 enum class Theme {
     None,
     Default,
     Light,
     M3Dynamic,
-    Amoled
+    Amoled,
+    Stoat
 }
 
 @Composable
@@ -164,6 +216,7 @@ fun getColorScheme(
         )
 
         requestedTheme == Theme.Default -> DarkColorScheme
+        requestedTheme == Theme.Stoat -> StoatColorScheme
         requestedTheme == Theme.Light -> LightColorScheme
         requestedTheme == Theme.Amoled -> AmoledColorScheme
         requestedTheme == Theme.None && systemInDarkTheme -> DarkColorScheme
@@ -174,6 +227,7 @@ fun getColorScheme(
     val colorSchemeIsDark = when {
         m3Supported && requestedTheme == Theme.M3Dynamic -> isSystemInDarkTheme()
         requestedTheme == Theme.Default -> true
+        requestedTheme == Theme.Stoat -> true
         requestedTheme == Theme.Light -> false
         requestedTheme == Theme.Amoled -> true
         requestedTheme == Theme.None && systemInDarkTheme -> true
@@ -230,7 +284,7 @@ fun getDefaultTheme(): Theme {
 
 fun isThemeDark(theme: Theme, systemIsDark: Boolean): Boolean {
     return when (theme) {
-        Theme.Default, Theme.Amoled -> true
+        Theme.Default, Theme.Amoled, Theme.Stoat -> true
         Theme.Light -> false
         Theme.M3Dynamic, Theme.None -> systemIsDark
     }

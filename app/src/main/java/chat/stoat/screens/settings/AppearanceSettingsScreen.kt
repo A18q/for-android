@@ -343,7 +343,7 @@ fun AppearanceSettingsScreen(
                         .padding(start = 20.dp, end = 20.dp)
                 ) {
                     ColourChip(
-                        color = Color(0xff333642),
+                        color = Color(0xFF5865F2),
                         text = stringResource(id = R.string.settings_appearance_theme_default),
                         selected = LoadedSettings.theme == Theme.Default,
                         modifier = Modifier
@@ -351,6 +351,17 @@ fun AppearanceSettingsScreen(
                             .testTag("set_theme_default")
                     ) {
                         viewModel.saveNewTheme(Theme.Default)
+                    }
+
+                    ColourChip(
+                        color = Color(0xFF406FFF),
+                        text = stringResource(id = R.string.settings_appearance_theme_stoat),
+                        selected = LoadedSettings.theme == Theme.Stoat,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("set_theme_stoat")
+                    ) {
+                        viewModel.saveNewTheme(Theme.Stoat)
                     }
 
                     ColourChip(
