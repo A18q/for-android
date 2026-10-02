@@ -22,7 +22,7 @@ object ChannelUtils {
      */
     fun resolveName(channel: Channel): String? {
         return channel.name
-            ?: StoatAPI.userCache[channel.recipients?.first { u -> u != StoatAPI.selfId }]?.let {
+            ?: StoatAPI.userCache[channel.recipients?.firstOrNull { u -> u != StoatAPI.selfId }]?.let {
                 User.resolveDefaultName(
                     it
                 )
@@ -33,7 +33,19 @@ object ChannelUtils {
         return channel.recipients?.firstOrNull { u -> u != StoatAPI.selfId }
     }
 
+    private data class ServerCategoryCacheKey(val serverId: String, val categories: List<chat.stoat.core.model.schemas.Category>?, val channelsHash: Int)
+    private val serverCategoryCache = java.util.concurrent.ConcurrentHashMap<String, Pair<ServerCategoryCacheKey, List<CategorisedChannelList>>>()
+
     fun categoriseServerFlat(server: Server): List<CategorisedChannelList> {
+        val serverId = server.id ?: return emptyList()
+        var channelsHash = 0
+        server.channels?.forEach { c -> channelsHash = 31 * channelsHash + (StoatAPI.channelCache[c]?.hashCode() ?: 0) }
+        val key = ServerCategoryCacheKey(serverId, server.categories, channelsHash)
+        
+        serverCategoryCache[serverId]?.let { (cachedKey, cachedList) ->
+            if (cachedKey == key) return cachedList
+        }
+
         val output = mutableListOf<CategorisedChannelList>()
         val categories = server.categories
 
@@ -63,6 +75,7 @@ object ChannelUtils {
             }
         }
 
+        serverCategoryCache[serverId] = Pair(key, output)
         return output
     }
 }

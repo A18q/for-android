@@ -111,14 +111,22 @@ class Unreads {
     fun hasAnyUnreads(): Boolean {
         if (!hasLoaded.value) return false
 
+        var found = false
+        val deadChannels = mutableListOf<String>()
         for ((channelId, _) in channels) {
-            val channel = StoatAPI.channelCache[channelId] ?: continue
+            val channel = StoatAPI.channelCache[channelId]
+            if (channel == null) {
+                deadChannels.add(channelId)
+                continue
+            }
+            if (found) continue
             if (NotificationSettingsProvider.isChannelMuted(channelId, channel.server)) continue
             if (hasUnread(channelId, channel.lastMessageID ?: "", channel.server)) {
-                return true
+                found = true
             }
         }
-        return false
+        deadChannels.forEach { channels.remove(it) }
+        return found
     }
 
     /**
@@ -129,13 +137,19 @@ class Unreads {
         if (!hasLoaded.value) return null
 
         var count = 0
+        val deadChannels = mutableListOf<String>()
         for ((channelId, _) in channels) {
-            val channel = StoatAPI.channelCache[channelId] ?: continue
+            val channel = StoatAPI.channelCache[channelId]
+            if (channel == null) {
+                deadChannels.add(channelId)
+                continue
+            }
             if (NotificationSettingsProvider.isChannelMuted(channelId, channel.server)) continue
             if (hasUnread(channelId, channel.lastMessageID ?: "", channel.server)) {
                 count++
             }
         }
+        deadChannels.forEach { channels.remove(it) }
         return count
     }
 

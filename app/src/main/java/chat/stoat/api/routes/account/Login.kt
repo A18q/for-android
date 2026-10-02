@@ -156,7 +156,6 @@ suspend fun negotiateAuthentication(email: String, password: String): EmailPassw
     }
 
     val responseContent = response.bodyAsText()
-    Log.d("Stoat", "negotiateAuthentication: $responseContent")
 
     try {
         val error = StoatJson.decodeFromString(StoatAPIError.serializer(), responseContent)
@@ -198,15 +197,13 @@ suspend fun authenticateWithMfaTotpCode(
         setBody(LoginMfaAmendmentTotpCode(mfaTicket, mfaResponse, friendlySessionName()))
     }
 
+    val responseContent = response.bodyAsText()
     try {
-        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), response.bodyAsText())
+        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), responseContent)
         return EmailPasswordAssessment(error = error)
     } catch (e: SerializationException) {
         // Not an error
     }
-
-    val responseContent = response.bodyAsText()
-    Log.d("Stoat", "authenticateWithMfaTotpCode: $responseContent")
 
     return EmailPasswordAssessment(
         firstUserHints = StoatJson.decodeFromString(UserHints.serializer(), responseContent)
@@ -222,15 +219,13 @@ suspend fun authenticateWithMfaRecoveryCode(
         setBody(LoginMfaAmendmentRecoveryCode(mfaTicket, mfaResponse, friendlySessionName()))
     }
 
+    val responseContent = response.bodyAsText()
     try {
-        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), response.bodyAsText())
+        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), responseContent)
         return EmailPasswordAssessment(error = error)
     } catch (e: SerializationException) {
         // Not an error
     }
-
-    val responseContent = response.bodyAsText()
-    Log.d("Stoat", "authenticateWithMfaRecoveryCode: $responseContent")
 
     return EmailPasswordAssessment(
         firstUserHints = StoatJson.decodeFromString(UserHints.serializer(), responseContent)

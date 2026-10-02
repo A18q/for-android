@@ -10,6 +10,8 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.builtins.ListSerializer
 
+import chat.stoat.api.StoatAPI
+
 suspend fun fetchAllSessions(): List<Session> {
     val response = StoatHttp.get("/auth/session/all".api())
         .bodyAsText()
@@ -22,10 +24,16 @@ suspend fun fetchAllSessions(): List<Session> {
 
 suspend fun logoutSessionById(id: String) {
     StoatHttp.delete("/auth/session/$id".api())
+    if (id == StoatAPI.sessionId) {
+        StoatAPI.logout()
+    }
 }
 
 suspend fun logoutAllSessions(includingSelf: Boolean = false) {
     StoatHttp.delete("/auth/session/all".api()) {
         parameter("revoke_self", includingSelf)
+    }
+    if (includingSelf) {
+        StoatAPI.logout()
     }
 }

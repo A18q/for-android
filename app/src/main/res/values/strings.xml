@@ -1375,4 +1375,12 @@
     <string name="server_context_sheet_actions_add_to_folder">Add to folder</string>
     <string name="server_context_sheet_actions_new_folder">New folder</string>
     <string name="server_context_sheet_actions_remove_from_folder">Remove from folder</string>
+    <string name="not_implemented">Not implemented</string>
+    <string name="settings_account_display_name">Display name</string>
+    <string name="settings_account_username">Username</string>
+    <string name="settings_account_phone">Phone Number</string>
+    <string name="settings_account_not_available">Not available</string>
+    <string name="settings_account_removal">Account removal</string>
+    <string name="settings_account_removal_description">Disabling your account means you can recover it at any time after taking this action. Deleting your account is permanent.</string>
+    <string name="settings_account_removal_button">Delete Account</string>
 </resources>

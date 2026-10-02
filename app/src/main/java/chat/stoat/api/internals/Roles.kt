@@ -54,11 +54,18 @@ object Roles {
 
         var calculated = server.defaultPermissions ?: BitDefaults.Server
 
-        member.roles?.forEach { roleId ->
-            val role = server.roles?.get(roleId) ?: return@forEach
+        if (calculated.hasPermission(PermissionBit.GrantAllSafe) || calculated.hasPermission(PermissionBit.GrantAll)) {
+            return PermissionBit.GrantAllSafe.value
+        }
+
+        val sortedRoles = member.roles?.mapNotNull { server.roles?.get(it) }?.sortedByDescending { it.rank ?: 0.0 }
+        sortedRoles?.forEach { role ->
             val permissions = role.permissions ?: return@forEach
 
             calculated = calculated or permissions.a and permissions.d.inv()
+            if (calculated.hasPermission(PermissionBit.GrantAllSafe) || calculated.hasPermission(PermissionBit.GrantAll)) {
+                return PermissionBit.GrantAllSafe.value
+            }
         }
 
         if (member.timeoutTimestamp()?.let { it > Clock.System.now() } == true) {
@@ -79,8 +86,7 @@ object Roles {
 
             ChannelType.TextChannel, ChannelType.VoiceChannel -> {
                 val server = StoatAPI.serverCache[channel.server]
-                // FIXME this is a stupid patch to prevent it from showing "no permission" on a channel on launch
-                    ?: return PermissionBit.GrantAllSafe.value
+                    ?: return 0L
 
                 if (server.owner == user?.id) return PermissionBit.GrantAllSafe.value
 
@@ -91,15 +97,23 @@ object Roles {
 
                 var calculated = permissionFor(server, chMember)
 
+                if (calculated.hasPermission(PermissionBit.GrantAllSafe) || calculated.hasPermission(PermissionBit.GrantAll)) {
+                    return PermissionBit.GrantAllSafe.value
+                }
+
                 if (channel.defaultPermissions != null) {
                     calculated =
                         calculated or channel.defaultPermissions!!.a and channel.defaultPermissions!!.d.inv()
                 }
 
                 if (chMember.roles?.isNotEmpty() == true) {
-                    chMember.roles!!.forEach { roleId ->
+                    val sortedRoles = chMember.roles!!.mapNotNull { id -> server.roles?.get(id)?.let { id to it } }.sortedByDescending { it.second.rank ?: 0.0 }
+                    sortedRoles.forEach { (roleId, role) ->
                         val override = channel.rolePermissions?.get(roleId) ?: return@forEach
                         calculated = calculated or override.a and override.d.inv()
+                        if (calculated.hasPermission(PermissionBit.GrantAllSafe) || calculated.hasPermission(PermissionBit.GrantAll)) {
+                            return PermissionBit.GrantAllSafe.value
+                        }
                     }
                 }
 

@@ -1,6 +1,13 @@
 package chat.stoat.screens.settings
 
 import android.app.Application
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import android.widget.Toast
+import chat.stoat.api.StoatAPI
+import chat.stoat.api.routes.user.fetchSelf
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -38,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
@@ -60,6 +68,11 @@ import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
 class AccountSettingsScreenViewModel(val context: Application) : ViewModel() {
+    var displayName by mutableStateOf("")
+        private set
+    var username by mutableStateOf("")
+        private set
+
     var accountEmail by mutableStateOf("")
         private set
     var accountEmailMasked by mutableStateOf("")
@@ -84,6 +97,18 @@ class AccountSettingsScreenViewModel(val context: Application) : ViewModel() {
         private set
 
     suspend fun loadDetails() {
+        StoatAPI.selfId?.let { selfId ->
+            val user = StoatAPI.userCache[selfId]
+            if (user != null) {
+                displayName = user.displayName ?: ""
+                username = user.username ?: ""
+            } else {
+                runCatching { fetchSelf() }.onSuccess { u ->
+                    displayName = u.displayName ?: ""
+                    username = u.username ?: ""
+                }
+            }
+        }
         runCatching { fetchAccount() }
             .onSuccess { account ->
                 accountEmail = account.email
@@ -144,6 +169,32 @@ class AccountSettingsScreenViewModel(val context: Application) : ViewModel() {
     }
 }
 
+@Composable
+private fun EyeButton(
+    masked: Boolean,
+    onToggle: () -> Unit,
+    contentDescriptionShow: String,
+    contentDescriptionHide: String
+) {
+    IconButton(onClick = onToggle) {
+        val alphaShow by animateFloatAsState(targetValue = if (masked) 1f else 0f, label = "alphaShow")
+        val alphaHide by animateFloatAsState(targetValue = if (masked) 0f else 1f, label = "alphaHide")
+
+        Box {
+            Icon(
+                painter = painterResource(R.drawable.ic_visibility_24dp),
+                contentDescription = contentDescriptionShow,
+                modifier = Modifier.alpha(alphaShow)
+            )
+            Icon(
+                painter = painterResource(R.drawable.ic_visibility_off_24dp),
+                contentDescription = contentDescriptionHide,
+                modifier = Modifier.alpha(alphaHide)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AccountSettingsScreen(
@@ -185,6 +236,7 @@ fun AccountSettingsScreen(
     if (viewModel.editingEmail) {
         val newEmailFieldState = rememberTextFieldState()
         val confirmationPasswordFieldState = rememberTextFieldState()
+        var showCurrentPassword by remember { mutableStateOf(false) }
 
         AlertDialog(
             onDismissRequest = {
@@ -214,7 +266,16 @@ fun AccountSettingsScreen(
                         label = { Text(stringResource(R.string.settings_account_email_edit_password)) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentType = ContentType.Password }
+                            .semantics { contentType = ContentType.Password },
+                        textObfuscationMode = if (showCurrentPassword) TextObfuscationMode.Visible else TextObfuscationMode.Hidden,
+                        trailingIcon = {
+                            EyeButton(
+                                masked = !showCurrentPassword,
+                                onToggle = { showCurrentPassword = !showCurrentPassword },
+                                contentDescriptionShow = "Show password",
+                                contentDescriptionHide = "Hide password"
+                            )
+                        }
                     )
                 }
             },
@@ -244,6 +305,8 @@ fun AccountSettingsScreen(
     if (viewModel.editingPassword) {
         val confirmationPasswordFieldState = rememberTextFieldState()
         val newPasswordFieldState = rememberTextFieldState()
+        var showCurrentPassword by remember { mutableStateOf(false) }
+        var showNewPassword by remember { mutableStateOf(false) }
 
         AlertDialog(
             onDismissRequest = {
@@ -262,14 +325,32 @@ fun AccountSettingsScreen(
                         label = { Text(stringResource(R.string.settings_account_password_edit_current_password)) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentType = ContentType.Password }
+                            .semantics { contentType = ContentType.Password },
+                        textObfuscationMode = if (showCurrentPassword) TextObfuscationMode.Visible else TextObfuscationMode.Hidden,
+                        trailingIcon = {
+                            EyeButton(
+                                masked = !showCurrentPassword,
+                                onToggle = { showCurrentPassword = !showCurrentPassword },
+                                contentDescriptionShow = "Show password",
+                                contentDescriptionHide = "Hide password"
+                            )
+                        }
                     )
                     SecureTextField(
                         state = newPasswordFieldState,
                         label = { Text(stringResource(R.string.settings_account_password_edit_new_password)) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentType = ContentType.NewPassword }
+                            .semantics { contentType = ContentType.NewPassword },
+                        textObfuscationMode = if (showNewPassword) TextObfuscationMode.Visible else TextObfuscationMode.Hidden,
+                        trailingIcon = {
+                            EyeButton(
+                                masked = !showNewPassword,
+                                onToggle = { showNewPassword = !showNewPassword },
+                                contentDescriptionShow = "Show password",
+                                contentDescriptionHide = "Hide password"
+                            )
+                        }
                     )
                 }
             },
@@ -337,29 +418,170 @@ fun AccountSettingsScreen(
                         )
                     }
 
-                    Subcategory(
-                        title = { Text(stringResource(R.string.settings_account_email)) }
+                    // Profile Card
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .clip(MaterialTheme.shapes.large)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_person_24dp),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = viewModel.displayName,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                            Text(
+                                text = viewModel.username,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Subcategory(
+                        title = { Text(stringResource(R.string.settings_account)) }
+                    ) {
+                        // Display Name
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clip(MaterialTheme.shapes.medium)
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .clickable { }
+                                .padding(horizontal = 22.dp, vertical = 18.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_account_display_name),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = viewModel.displayName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_edit_24dp),
+                                    contentDescription = null
+                                )
+                            }
+                        }
+
+                        // Username
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clip(MaterialTheme.shapes.medium)
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .clickable { }
+                                .padding(horizontal = 22.dp, vertical = 18.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_account_username),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = viewModel.username,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_edit_24dp),
+                                    contentDescription = null
+                                )
+                            }
+                        }
+
+                        // Email
+                        var emailRevealed by remember { mutableStateOf(false) }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
                                 .clip(MaterialTheme.shapes.medium)
                                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                                 .clickable { viewModel.editingEmail = true }
                                 .padding(horizontal = 22.dp, vertical = 18.dp)
                         ) {
                             Text(
-                                text = viewModel.accountEmailMasked,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f)
+                                text = stringResource(R.string.settings_account_email),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Icon(
-                                painter = painterResource(R.drawable.ic_edit_24dp),
-                                contentDescription = stringResource(R.string.settings_account_email_edit_alt)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = if (emailRevealed) viewModel.accountEmail else viewModel.accountEmailMasked,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                EyeButton(
+                                    masked = !emailRevealed,
+                                    onToggle = { emailRevealed = !emailRevealed },
+                                    contentDescriptionShow = "Reveal email",
+                                    contentDescriptionHide = "Hide email"
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_edit_24dp),
+                                    contentDescription = stringResource(R.string.settings_account_email_edit_alt)
+                                )
+                            }
+                        }
+
+                        // Phone Number
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .clip(MaterialTheme.shapes.medium)
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .clickable { }
+                                .padding(horizontal = 22.dp, vertical = 18.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_account_phone),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = stringResource(R.string.settings_account_not_available), // Phone not supported by server API
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_edit_24dp),
+                                    contentDescription = null
+                                )
+                            }
                         }
                     }
 
@@ -440,8 +662,32 @@ fun AccountSettingsScreen(
                             )
                         }
                     }
-                }
+
+                    Subcategory(
+                        title = { Text(stringResource(R.string.settings_account_removal)) }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_account_removal_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            androidx.compose.material3.Button(
+                                onClick = { Toast.makeText(context, context.getString(R.string.not_implemented), Toast.LENGTH_SHORT).show() },
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError
+                                )
+                            ) {
+                                Text(stringResource(R.string.settings_account_removal_button))
+                            }
+                        }
+                    }
             }
         }
     }
+}
 }

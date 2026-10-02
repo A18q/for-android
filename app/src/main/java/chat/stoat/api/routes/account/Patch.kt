@@ -25,10 +25,10 @@ suspend fun changeEmail(newEmail: String, currentPassword: String) {
         contentType(ContentType.Application.Json)
     }
     if (!res.status.isSuccess()) {
-        runCatching { StoatJson.decodeFromString(StoatAPIError.serializer(), res.bodyAsText()) }
+        val errorResponse = res.bodyAsText()
+        runCatching { StoatJson.decodeFromString(StoatAPIError.serializer(), errorResponse) }
             .onSuccess { throw Exception(it.type) }
 
-        val errorResponse = res.bodyAsText()
         throw Exception("Failed to change email: $errorResponse")
     }
 }
@@ -45,10 +45,10 @@ suspend fun changePassword(newPassword: String, currentPassword: String) {
         contentType(ContentType.Application.Json)
     }
     if (!res.status.isSuccess()) {
-        runCatching { StoatJson.decodeFromString(StoatAPIError.serializer(), res.bodyAsText()) }
+        val errorResponse = res.bodyAsText()
+        runCatching { StoatJson.decodeFromString(StoatAPIError.serializer(), errorResponse) }
             .onSuccess { throw Exception(it.type) }
 
-        val errorResponse = res.bodyAsText()
         throw Exception("Failed to change password: $errorResponse")
     }
 }

@@ -2,9 +2,11 @@ package chat.stoat.api.internals
 
 import chat.stoat.core.model.schemas.Member
 
+import java.util.concurrent.ConcurrentHashMap
+
 class Members {
     // memberCache (mapping of serverId to userId to member)
-    private val memberCache = mutableMapOf<String, MutableMap<String, Member>>()
+    private val memberCache = ConcurrentHashMap<String, ConcurrentHashMap<String, Member>>()
 
     fun getMember(serverId: String, userId: String): Member? {
         return memberCache[serverId]?.get(userId)
@@ -15,7 +17,7 @@ class Members {
     }
 
     fun setMember(serverId: String, member: Member) {
-        val serverMap = memberCache.getOrPut(serverId) { mutableMapOf() }
+        val serverMap = memberCache.getOrPut(serverId) { ConcurrentHashMap() }
         member.id?.user?.let { serverMap[it] = member }
     }
 

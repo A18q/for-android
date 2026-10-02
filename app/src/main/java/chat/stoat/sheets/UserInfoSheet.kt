@@ -98,6 +98,13 @@ private fun safeParseColor(hex: String?, fallback: Color = FallbackRoleColor): C
     }
 }
 
+sealed class NoteSaveState {
+    object Idle : NoteSaveState()
+    object Saving : NoteSaveState()
+    object Saved : NoteSaveState()
+    data class Error(val message: String) : NoteSaveState()
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun UserInfoSheet(
@@ -113,7 +120,22 @@ fun UserInfoSheet(
     var profile by remember(user) { mutableStateOf(user?.profile) }
     var profileNotFound by remember { mutableStateOf(false) }
 
-    LaunchedEffect(user?.id) {
+    val isSelf = userId == StoatAPI.selfId
+    var noteText by remember(userId) { mutableStateOf("") }
+    var noteSaveState by remember { mutableStateOf<NoteSaveState>(NoteSaveState.Idle) }
+    var lastGoodNoteText by remember(userId) { mutableStateOf("") }
+
+    LaunchedEffect(userId) {
+        if (!isSelf) {
+            try {
+                val fetchedNote = chat.stoat.api.routes.user.fetchUserNote(userId)
+                val text = fetchedNote ?: ""
+                noteText = text
+                lastGoodNoteText = text
+            } catch (e: Exception) {
+                noteSaveState = NoteSaveState.Error("Failed to fetch")
+            }
+        }
         try {
             user?.id?.let { uid ->
                 val fetched = fetchUserProfile(uid)
@@ -127,6 +149,21 @@ fun UserInfoSheet(
                 profileNotFound = true
             }
             e.printStackTrace()
+        }
+    }
+
+    LaunchedEffect(noteText) {
+        if (!isSelf && noteText != lastGoodNoteText) {
+            noteSaveState = NoteSaveState.Saving
+            kotlinx.coroutines.delay(800L)
+            try {
+                chat.stoat.api.routes.user.putUserNote(userId, noteText)
+                lastGoodNoteText = noteText
+                noteSaveState = NoteSaveState.Saved
+            } catch (e: Exception) {
+                noteText = lastGoodNoteText
+                noteSaveState = NoteSaveState.Error("Failed to save")
+            }
         }
     }
 
@@ -150,8 +187,6 @@ fun UserInfoSheet(
         return
     }
 
-    val isSelf = userId == StoatAPI.selfId
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -163,7 +198,7 @@ fun UserInfoSheet(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(175.dp)
+                .height(195.dp)
         ) {
             val background = profile?.background
             val bgId = background?.id
@@ -198,7 +233,7 @@ fun UserInfoSheet(
                 )
             }
 
-            // Discord Overlapping 96dp Circular Avatar with 6dp Cut-Out Border
+            // Discord Overlapping 120dp Circular Avatar with 6dp Cut-Out Border
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -208,11 +243,11 @@ fun UserInfoSheet(
                     username = User.resolveDefaultName(user),
                     userId = user.id ?: "",
                     avatar = user.avatar,
-                    size = 96.dp,
-                    presenceSize = 26.dp,
+                    size = 120.dp,
+                    presenceSize = 32.dp,
                     presence = presenceFromStatus(user.status?.presence, user.online ?: false),
                     modifier = Modifier
-                        .size(96.dp)
+                        .size(120.dp)
                         .clip(CircleShape)
                         .border(6.dp, DiscordDarkCanvas, CircleShape)
                 )
@@ -358,6 +393,65 @@ fun UserInfoSheet(
                         SelectionContainer {
                             ChatMarkdown(content = profile?.content!!, serverId = serverId)
                         }
+                    }
+                }
+            }
+
+            // Card 1.5: NOTE
+            if (!isSelf) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = DiscordCardSurface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DiscordDivider.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "NOTE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DiscordTextMuted,
+                                letterSpacing = 0.8.sp
+                            )
+                            androidx.compose.animation.AnimatedVisibility(visible = noteSaveState != NoteSaveState.Idle) {
+                                Text(
+                                    text = when (val state = noteSaveState) {
+                                        NoteSaveState.Saving -> "Saving..."
+                                        NoteSaveState.Saved -> "Saved"
+                                        is NoteSaveState.Error -> state.message
+                                        else -> ""
+                                    },
+                                    fontSize = 11.sp,
+                                    color = if (noteSaveState is NoteSaveState.Error) Color.Red else DiscordTextMuted
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        androidx.compose.material3.OutlinedTextField(
+                            value = noteText,
+                            onValueChange = { if (it.length <= 500) noteText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Note", color = DiscordTextMuted, fontSize = 13.sp) },
+                            minLines = 2,
+                            maxLines = 5,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = DiscordTextNormal, fontSize = 13.sp),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = DiscordBlurple,
+                                unfocusedBorderColor = DiscordDivider,
+                                cursorColor = DiscordTextNormal
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Only visible to you",
+                            fontSize = 10.sp,
+                            color = DiscordTextMuted
+                        )
                     }
                 }
             }

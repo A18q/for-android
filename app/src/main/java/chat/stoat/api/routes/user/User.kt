@@ -22,7 +22,10 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
-
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import io.ktor.client.request.put
 suspend fun fetchSelf(): User {
     val response = StoatHttp.get("/users/@me".api())
         .bodyAsText()
@@ -210,4 +213,38 @@ suspend fun fetchUserProfile(id: String): Profile {
     }
 
     return StoatJson.decodeFromString(Profile.serializer(), response)
+}
+
+suspend fun fetchUserNote(userId: String): String? {
+    val res = StoatHttp.get("/users/$userId/note".api())
+    if (res.status == HttpStatusCode.NotFound) return null
+    val response = res.bodyAsText()
+    try {
+        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), response)
+        throw Exception(error.type)
+    } catch (e: SerializationException) {
+        // Not an error
+    }
+    
+    val json = StoatJson.decodeFromString(JsonElement.serializer(), response)
+    return json.jsonObject["note"]?.jsonPrimitive?.contentOrNull
+}
+
+suspend fun putUserNote(userId: String, content: String) {
+    val res = StoatHttp.put("/users/$userId/note".api()) {
+        contentType(ContentType.Application.Json)
+        setBody(
+            StoatJson.encodeToString(
+                MapSerializer(String.serializer(), String.serializer()),
+                mapOf("content" to content)
+            )
+        )
+    }
+    val responseContent = res.bodyAsText()
+    if (res.status != HttpStatusCode.OK && res.status != HttpStatusCode.NoContent) {
+        val error = runCatching {
+            StoatJson.decodeFromString(StoatAPIError.serializer(), responseContent)
+        }.getOrNull()
+        throw Exception(error?.type ?: "Error ${res.status.value}: $responseContent")
+    }
 }

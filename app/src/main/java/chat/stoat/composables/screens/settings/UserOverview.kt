@@ -277,7 +277,7 @@ fun RawUserOverview2(
         }
     }
 
-    Column {
+    Column(modifier = Modifier.fillMaxWidth()) {
         val background = backgroundUrl ?: profile?.background
         val contentColour = LocalContentColor.current
         val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }

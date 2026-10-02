@@ -8,6 +8,9 @@ import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+import chat.stoat.api.StoatAPIError
+import io.ktor.http.isSuccess
+
 @Serializable
 data class AccountResponse(
     @SerialName("_id") val id: String,
@@ -16,9 +19,15 @@ data class AccountResponse(
 
 suspend fun fetchAccount(): AccountResponse {
     val response = StoatHttp.get("/auth/account".api())
-        .bodyAsText()
+    val responseContent = response.bodyAsText()
 
-    return StoatJson.decodeFromString(response)
+    if (!response.status.isSuccess()) {
+        runCatching { StoatJson.decodeFromString(StoatAPIError.serializer(), responseContent) }
+            .onSuccess { throw Exception(it.type) }
+        throw Exception("Failed to fetch account: $responseContent")
+    }
+
+    return StoatJson.decodeFromString(responseContent)
 }
 
 @Serializable
