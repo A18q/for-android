@@ -344,11 +344,12 @@ fun ChannelSideDrawer(
     var showSelfProfileSheet by remember { mutableStateOf(false) }
 
     if (showSelfProfileSheet && StoatAPI.selfId != null) {
-        val selfSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        val selfSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             sheetState = selfSheetState,
+            dragHandle = null,
+            containerColor = Color.Transparent,
             onDismissRequest = { showSelfProfileSheet = false },
-            containerColor = Color(0xFF1E1F22)
         ) {
             UserInfoSheet(
                 userId = StoatAPI.selfId!!,

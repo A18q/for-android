@@ -6,9 +6,13 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.net.toUri
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
@@ -60,6 +65,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -143,9 +149,13 @@ fun ServerInviteContent(
 
     var currentSubView by remember { mutableStateOf(InviteSubView.Invite) }
     var searchQuery by remember { mutableStateOf("") }
+    // TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
     var expireOption by remember { mutableStateOf("30 days") }
     var maxUsesOption by remember { mutableStateOf("No limit") }
     var isTemporaryMembership by remember { mutableStateOf(false) }
+
+    var showCopiedToast by remember { mutableStateOf(false) }
+    var showCopiedSnackbar by remember { mutableStateOf(false) }
 
     val invitedFriends = remember { mutableStateMapOf<String, Boolean>() }
     val sendingFriends = remember { mutableStateMapOf<String, Boolean>() }
@@ -185,6 +195,20 @@ fun ServerInviteContent(
         if (inviteCode != null) "$STOAT_INVITES/$inviteCode" else STOAT_INVITES
     }
 
+    val handleCopyLink: () -> Unit = {
+        clipboard.setText(AnnotatedString(inviteUrl))
+        showCopiedToast = true
+        showCopiedSnackbar = true
+        scope.launch {
+            delay(2500)
+            showCopiedToast = false
+        }
+        scope.launch {
+            delay(4000)
+            showCopiedSnackbar = false
+        }
+    }
+
     BackHandler(enabled = currentSubView != InviteSubView.Invite) {
         when (currentSubView) {
             InviteSubView.ExpirePicker, InviteSubView.MaxUsesPicker -> currentSubView = InviteSubView.LinkSettings
@@ -193,11 +217,12 @@ fun ServerInviteContent(
         }
     }
 
-    AnimatedContent(
-        targetState = currentSubView,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "InviteSubViewAnimation"
-    ) { subView ->
+    Box(modifier = Modifier.fillMaxWidth()) {
+        AnimatedContent(
+            targetState = currentSubView,
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "InviteSubViewAnimation"
+        ) { subView ->
         when (subView) {
             InviteSubView.Invite -> {
                 Column(
@@ -276,8 +301,7 @@ fun ServerInviteContent(
                             icon = painterResource(R.drawable.ic_link_24dp),
                             label = "Copy Link",
                             onClick = {
-                                clipboard.setText(AnnotatedString(inviteUrl))
-                                Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+                                handleCopyLink()
                             }
                         )
 
@@ -403,10 +427,13 @@ fun ServerInviteContent(
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = "Your invite link expires in $expireOption. ",
+                            text = "Your invite link will never expire.",
                             color = Color(0xFF949BA4),
                             fontSize = 13.sp
                         )
+                        // TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
+                        /*
+                        Spacer(Modifier.width(4.dp))
                         Text(
                             text = "Edit invite link.",
                             color = Color(0xFF5865F2),
@@ -416,24 +443,35 @@ fun ServerInviteContent(
                                 currentSubView = InviteSubView.LinkSettings
                             }
                         )
+                        */
                     }
 
                     Spacer(Modifier.height(4.dp))
 
                     // Friends list
-                    val friends = remember(StoatAPI.userCache.values) {
-                        StoatAPI.userCache.values.filter { it.relationship == "Friend" && it.id != null }
+                    val friends = remember {
+                        StoatAPI.userCache.values
+                            .asSequence()
+                            .filter { it.relationship == "Friend" && !it.id.isNullOrBlank() }
+                            .toList()
                     }
                     val filteredFriends = remember(friends, searchQuery) {
                         val trimmed = searchQuery.trim()
-                        val list = if (trimmed.isBlank()) friends
-                        else friends.filter {
-                            (it.displayName ?: "").contains(trimmed, ignoreCase = true) ||
-                            (it.username ?: "").contains(trimmed, ignoreCase = true)
+                        val baseList = if (trimmed.isEmpty()) {
+                            friends
+                        } else {
+                            friends.filter { friend ->
+                                friend.displayName?.contains(trimmed, ignoreCase = true) == true ||
+                                friend.username?.contains(trimmed, ignoreCase = true) == true
+                            }
                         }
-                        list.sortedWith(
+                        baseList.sortedWith(
                             compareByDescending<User> { it.online == true }
-                                .thenBy { (it.displayName ?: it.username ?: "").lowercase() }
+                                .thenComparator { a, b ->
+                                    val nameA = a.displayName ?: a.username ?: ""
+                                    val nameB = b.displayName ?: b.username ?: ""
+                                    String.CASE_INSENSITIVE_ORDER.compare(nameA, nameB)
+                                }
                         )
                     }
 
@@ -507,6 +545,7 @@ fun ServerInviteContent(
                 }
             }
 
+            // TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
             InviteSubView.LinkSettings -> {
                 LinkSettingsView(
                     server = server,
@@ -521,6 +560,7 @@ fun ServerInviteContent(
                 )
             }
 
+            // TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
             InviteSubView.ExpirePicker -> {
                 OptionPickerView(
                     title = "Expire After",
@@ -531,6 +571,7 @@ fun ServerInviteContent(
                 )
             }
 
+            // TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
             InviteSubView.MaxUsesPicker -> {
                 OptionPickerView(
                     title = "Max Uses",
@@ -544,11 +585,125 @@ fun ServerInviteContent(
             InviteSubView.QrCode -> {
                 QrCodeView(
                     inviteUrl = inviteUrl,
-                    onClose = { currentSubView = InviteSubView.Invite }
+                    onClose = { currentSubView = InviteSubView.Invite },
+                    onCopy = { handleCopyLink() }
                 )
             }
         }
     }
+
+    // Top Pill Toast: "Link Copied!"
+    AnimatedVisibility(
+        visible = showCopiedToast,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { -it }),
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(top = 16.dp)
+            .zIndex(10f)
+    ) {
+        Box(
+            modifier = Modifier
+                .background(Color(0xFF23A55A), RoundedCornerShape(20.dp))
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_check_24dp),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "Link Copied!",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+        }
+    }
+
+    // Bottom Snackbar: URL, [Edit (TODO)], Share, Dismiss
+    AnimatedVisibility(
+        visible = showCopiedSnackbar,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .zIndex(10f)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = Color(0xFF1E1F22),
+            border = BorderStroke(1.dp, Color(0xFF3F4147)),
+            shadowElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = inviteUrl,
+                    color = Color(0xFFF2F3F5),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                // TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
+                /*
+                Text(
+                    text = "Edit",
+                    color = Color(0xFF5865F2),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clickable {
+                            currentSubView = InviteSubView.LinkSettings
+                            showCopiedSnackbar = false
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                */
+                Text(
+                    text = "Share",
+                    color = Color(0xFF5865F2),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clickable {
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, inviteUrl)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share Invite"))
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                IconButton(
+                    onClick = { showCopiedSnackbar = false },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_close_24dp),
+                        contentDescription = "Dismiss",
+                        tint = Color(0xFF949BA4),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
 }
 
 @Composable
@@ -694,6 +849,7 @@ private fun FriendInviteRow(
     }
 }
 
+// TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
 @Composable
 private fun LinkSettingsView(
     server: Server?,
@@ -916,6 +1072,7 @@ private fun LinkSettingsView(
     }
 }
 
+// TODO: Later implementation when backend supports invite expiry, max_uses, and temporary membership
 @Composable
 private fun OptionPickerView(
     title: String,
@@ -999,7 +1156,8 @@ private fun OptionPickerView(
 @Composable
 private fun QrCodeView(
     inviteUrl: String,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onCopy: (() -> Unit)? = null
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -1078,8 +1236,12 @@ private fun QrCodeView(
                 .clip(RoundedCornerShape(20.dp))
                 .background(Color(0xFF5865F2))
                 .clickable {
-                    clipboard.setText(AnnotatedString(inviteUrl))
-                    Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+                    if (onCopy != null) {
+                        onCopy()
+                    } else {
+                        clipboard.setText(AnnotatedString(inviteUrl))
+                        Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+                    }
                 }
                 .padding(horizontal = 24.dp, vertical = 10.dp)
         ) {

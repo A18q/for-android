@@ -135,6 +135,7 @@ fun InlineMediaPickerMediaPicker(
         GlideImage(
             model = currentModel,
             contentDescription = stringResource(R.string.inline_media_picker_current_description),
+            alignment = if (circular) AvatarAlignment else Alignment.Center,
             contentScale = if (circular) ContentScale.Crop else ContentScale.FillWidth,
             modifier = if (circular) {
                 Modifier

@@ -28,11 +28,19 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.remember
+import androidx.compose.ui.BiasAlignment
+import androidx.compose.ui.platform.LocalDensity
 import chat.stoat.R
 import chat.stoat.api.settings.LoadedSettings
 import chat.stoat.core.model.data.STOAT_BASE
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
+
+const val AVATAR_FOCAL_Y = 0.15f
+val AvatarAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = 2f * AVATAR_FOCAL_Y - 1f)
 
 enum class Presence {
     Online,
@@ -141,71 +149,57 @@ fun UserAvatar(
     size: Dp = 40.dp,
     presenceSize: Dp = 16.dp,
     shape: Shape = RoundedCornerShape(LoadedSettings.avatarRadius),
-    allowAnimation: Boolean = false,
+    allowAnimation: Boolean = true,
     onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
+    val density = LocalDensity.current
+    val targetPx = remember(size, density) {
+        with(density) { (size * 2).roundToPx() }
+    }
+
+    val avatarUrl = rawUrl ?: if (avatar != null) {
+        "$STOAT_FILES/avatars/${avatar.id}?max_side=$targetPx"
+    } else {
+        "$STOAT_BASE/users/${userId.ifBlank { "0".repeat(26) }}/default_avatar"
+    }
+
     Box(
         modifier = modifier
-            .size(size),
+            .size(size)
+            .aspectRatio(1f),
         contentAlignment = Alignment.BottomEnd
     ) {
-        if (avatar != null) {
-            RemoteImage(
-                url = rawUrl ?: "$STOAT_FILES/avatars/${avatar.id}",
-                contentScale = ContentScale.Crop,
-                description = stringResource(id = R.string.avatar_alt, username),
-                allowAnimation = allowAnimation,
-                modifier = Modifier
-                    .clip(shape)
-                    .size(size)
-                    .then(
-                        if (presence != null) {
-                            Modifier.bottomEndCircleCutout(presenceSize)
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .then(
-                        if (onLongClick != null || onClick != null) {
-                            Modifier
-                                .combinedClickable(
-                                    onClick = { onClick?.invoke() },
-                                    onLongClick = { onLongClick?.invoke() }
-                                )
-                        } else {
-                            Modifier
-                        }
-                    )
-            )
-        } else {
-            RemoteImage(
-                url = "$STOAT_BASE/users/${userId.ifBlank { "0".repeat(26) }}/default_avatar",
-                description = stringResource(id = R.string.avatar_alt, username),
-                allowAnimation = allowAnimation,
-                modifier = Modifier
-                    .clip(shape)
-                    .size(size)
-                    .then(
-                        if (presence != null) {
-                            Modifier.bottomEndCircleCutout(presenceSize)
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .then(
-                        if (onLongClick != null || onClick != null) {
-                            Modifier
-                                .combinedClickable(
-                                    onClick = { onClick?.invoke() },
-                                    onLongClick = { onLongClick?.invoke() }
-                                )
-                        } else {
-                            Modifier
-                        }
-                    )
-            )
-        }
+        RemoteImage(
+            url = avatarUrl,
+            description = stringResource(id = R.string.avatar_alt, username),
+            alignment = AvatarAlignment,
+            contentScale = ContentScale.Crop,
+            allowAnimation = allowAnimation,
+            targetWidthPx = targetPx,
+            targetHeightPx = targetPx,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+                .then(
+                    if (presence != null) {
+                        Modifier.bottomEndCircleCutout(presenceSize)
+                    } else {
+                        Modifier
+                    }
+                )
+                .then(
+                    if (onLongClick != null || onClick != null) {
+                        Modifier
+                            .combinedClickable(
+                                onClick = { onClick?.invoke() },
+                                onLongClick = { onLongClick?.invoke() }
+                            )
+                    } else {
+                        Modifier
+                    }
+                )
+        )
 
         if (presence != null) {
             PresenceBadge(presence, size = presenceSize)
@@ -224,20 +218,29 @@ fun GroupIcon(
     onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
+    val density = LocalDensity.current
+    val targetPx = remember(size, density) {
+        with(density) { (size * 2).roundToPx() }
+    }
+
     Box(
         modifier = modifier
-            .size(size),
+            .size(size)
+            .aspectRatio(1f),
         contentAlignment = Alignment.BottomEnd
     ) {
         if (icon?.id != null) {
             RemoteImage(
-                url = rawUrl ?: "$STOAT_FILES/icons/${icon.id}",
+                url = rawUrl ?: "$STOAT_FILES/icons/${icon.id}?max_side=$targetPx",
                 allowAnimation = false,
+                alignment = AvatarAlignment,
                 contentScale = ContentScale.Crop,
                 description = stringResource(id = R.string.avatar_alt, name),
+                targetWidthPx = targetPx,
+                targetHeightPx = targetPx,
                 modifier = Modifier
+                    .fillMaxSize()
                     .clip(MaterialTheme.shapes.small)
-                    .size(size)
                     .then(
                         if (onLongClick != null || onClick != null) {
                             Modifier
@@ -253,7 +256,7 @@ fun GroupIcon(
         } else {
             Box(
                 modifier = Modifier
-                    .size(size)
+                    .fillMaxSize()
                     .then(
                         if (onLongClick != null || onClick != null) {
                             Modifier

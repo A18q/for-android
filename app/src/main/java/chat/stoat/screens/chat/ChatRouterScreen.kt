@@ -702,10 +702,12 @@ fun ChatRouterScreen(
     }
 
     if (showUserContextSheet) {
-        val userContextSheetState = rememberModalBottomSheetState()
+        val userContextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         ModalBottomSheet(
             sheetState = userContextSheetState,
+            dragHandle = null,
+            containerColor = Color.Transparent,
             onDismissRequest = {
                 showUserContextSheet = false
             }
@@ -725,6 +727,8 @@ fun ChatRouterScreen(
                     userId = userContextSheetTarget,
                     serverId = userContextSheetServer,
                     dismissSheet = dismissUserSheet,
+                    onOpenSettings = { topNav.navigate("settings/profile") },
+                    onOpenStatusSheet = { showStatusSheet = true }
                 )
             }
         }

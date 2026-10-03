@@ -4,6 +4,7 @@ import android.util.DisplayMetrics
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -19,10 +20,13 @@ fun RemoteImage(
     url: String,
     description: String?,
     modifier: Modifier = Modifier,
+    alignment: Alignment = Alignment.Center,
     contentScale: ContentScale = ContentScale.Crop,
     width: Int = 0,
     height: Int = 0,
-    allowAnimation: Boolean = true
+    allowAnimation: Boolean = true,
+    targetWidthPx: Int = 0,
+    targetHeightPx: Int = 0
 ) {
     val context = LocalContext.current
 
@@ -42,11 +46,17 @@ fun RemoteImage(
     GlideImage(
         model = url,
         contentDescription = description,
+        alignment = alignment,
         contentScale = contentScale,
         modifier = dimensionModifier,
         transition = CrossFade,
         requestBuilderTransform = { rb ->
-            if (!allowAnimation) rb.dontAnimate() else rb
+            val builder = if (!allowAnimation) rb.dontAnimate() else rb
+            if (targetWidthPx > 0 && targetHeightPx > 0) {
+                builder.override(targetWidthPx, targetHeightPx)
+            } else {
+                builder
+            }
         }
     )
 }
