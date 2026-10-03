@@ -1,52 +1,20 @@
-<div align="center">
-    <h1>Stoat for Android</h1>
-    <p>Official <a href="https://stoat.chat">Stoat</a> Android app.</p>
-    <br/><br/>
-    <div>
-        <a href="https://play.google.com/store/apps/details?id=chat.revolt"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="200"></a>
-        <br/>
-    </div>
-    <small>Google Play is a trademark of Google LLC.</small>
-    <br/><br/><br/>
-</div>
+# ✦ Stoat for Android ✦
 
-## Description
+After Discord slapped digital training wheels on my account for daring to log off and demanded a biometric KYC face scan, I migrated over to Revolt (rebranded to Stoat).
 
-The codebase includes the app itself, as well as an internal library for interacting with the Stoat
-API. The app is written in Kotlin, and wholly
-uses [Jetpack Compose](https://developer.android.com/jetpack/compose).
+Huge respect to the Stoat team for building a solid open-source backend with actual privacy, but trying to daily-drive the official Android app was an exercise in pure pain. It felt less like a mature client and more like something hacked together over a weekend and left to fend for itself.
 
-## Stack
+Essential features you expect on mobile were simply missing, server management was practically nonexistent, and navigating felt like trying to speedrun T9 texting on a broken Nokia. Giant block buttons, chat panels buried behind a blind swipe left that anyone would miss, and an upstream stance that was not welcoming to UI contributions.
 
-- [Kotlin](https://kotlinlang.org/)
-- [Jetpack Compose](https://developer.android.com/jetpack/compose)
-    - For some Material components, the View-based
-      [Material Components Android](https://github.com/material-components/material-components-android)
-      (MDC-Android) library is used.
-- [Ktor](https://ktor.io/)
-- [Dagger](https://dagger.dev/) with [Hilt](https://dagger.dev/hilt/)
+So I did what open source was made for: forked the repo out of spite. I gutted the frontend and rebuilt it so muscle memory stops tripping, brought core navigation forward, and made it actually usable for daily driving without fighting the screen.
 
-## Resources
+It was built across 7 days of questionable life decisions, minimal sleep, and caffeine. It works for my day-to-day use, but do not expect corporate polish.
 
-### Stoat for Android
+---
 
-- [Roadmap](https://op.revolt.wtf/projects/revolt-for-android/work_packages)
-- [Stoat for Android Technical Documentation](https://revoltchat.github.io/android/)
-- [Android-specific Contribution Guide](https://revoltchat.github.io/android/contributing/guidelines/)
-  &mdash;**read carefully before contributing!**
+❯ GitHub Repo: https://github.com/A18q/for-android  
+❯ v1.9.2 APK Release: https://github.com/A18q/for-android/releases/tag/v1.9.2  
 
-### Stoat
+---
 
-- [Stoat Project Board](https://github.com/revoltchat/revolt/discussions) (Submit feature requests
-  here)
-- [Stoat Development Server](https://app.revolt.chat/invite/API)
-- [Stoat Server](https://app.revolt.chat/invite/Testers)
-- [General Stoat Contribution Guide](https://developers.revolt.chat/contrib.html)
-
-## Quick Start
-
-Open the project in Android Studio. You can then run the app on an emulator or a physical device by
-running the `app` module.
-
-In-depth setup instructions can be found
-at [Setting up your Development Environment](https://revoltchat.github.io/android/contributing/setup/)
+✦ May your builds be green, your dependencies uncompromised, and your identity kept away from third-party KYC brokers. Happy to answer questions or take issue reports.
