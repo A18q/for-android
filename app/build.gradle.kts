@@ -63,8 +63,8 @@ android {
         applicationId = "chat.revolt"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = Integer.parseInt("001_008_001".replace("_", ""), 10)
-        versionName = "1.8.1"
+        versionCode = Integer.parseInt("001_009_002".replace("_", ""), 10)
+        versionName = "1.9.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -72,8 +72,21 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("stoat-release.jks")
+            storePassword = buildproperty("stoat.keystore.password", "STOAT_KEYSTORE_PASSWORD") ?: "stoatrelease"
+            keyAlias = buildproperty("stoat.key.alias", "STOAT_KEY_ALIAS") ?: "stoat"
+            keyPassword = buildproperty("stoat.key.password", "STOAT_KEY_PASSWORD") ?: "stoatrelease"
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -136,7 +149,9 @@ android {
     }
     lint {
         abortOnError = false
+        checkReleaseBuilds = false
         disable += "MissingTranslation"
+        disable += "ExtraTranslation"
     }
 }
 

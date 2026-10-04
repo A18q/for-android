@@ -29,3 +29,5 @@ copilot.data.migration*xml
 *.local.*
 /mockup_references/
 /mockups/
+*.jks
+*.keystore
